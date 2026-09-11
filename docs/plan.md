@@ -66,7 +66,7 @@ instead of maintaining a fork.
    ┌────────────────┐   │                                              │
    │ .pi/extensions │   │   orcd            broker                     │
    │ .pi/skills     │──▶│   ├ run store     ├ model gateway  ──┐       │
-   │ orc.yaml       │   │   ├ scheduler     ├ egress gateway ──┼──▶ internet
+   │ orc.config.ts  │   │   ├ scheduler     ├ egress gateway ──┼──▶ internet
    └────────────────┘   │   ├ event bus     └ policy engine    │   (allowlisted)
                         │   └ artifact svc                     │
                         │       │                        Secrets Manager
@@ -275,29 +275,34 @@ Both compile to the same control-plane calls. `defineWorkflow` is the one piece 
 ours rather than Pi's — it is a thin deterministic driver over the same `orc_*` primitives, so an
 LLM-driven and a code-driven run are indistinguishable to `orcd`.
 
-**Policy is declared, not coded.** `orc.yaml` at the repo root is the security-relevant surface, and
-it is reviewed like code:
+**Policy is a value; logic is code — both TypeScript.** orc has no YAML (§8, D2). `orc.config.ts` at
+the repo root is the security-relevant surface. It is TypeScript that *evaluates to a static value*,
+resolved once before any agent starts, then frozen and hashed:
 
-```yaml
-version: 1
-roles:
-  backend:
-    image: ghcr.io/acme/pi-kit-node:20
-    model: { provider: bedrock, id: anthropic.claude-opus-4-5 }
-    tools: { allow: [read, write, edit, bash, orc_*], deny: [web_fetch] }
-    egress:
-      allow: [github.com, registry.npmjs.org, "*.amazonaws.com"]
-    secrets:
-      - { name: GITHUB_TOKEN, scope: [github.com], mode: inject }
-limits: { max_agents: 12, wall_clock: 45m, usd_budget: 25 }
+```ts
+// orc.config.ts — evaluated once, before any agent starts, then frozen and hashed
+import { defineConfig, role } from "@orc/sdk";
+
+export default defineConfig({
+  roles: {
+    backend: role({
+      image: "ghcr.io/acme/pi-kit-node:20",
+      model: { provider: "bedrock", id: "anthropic.claude-opus-4-5" },
+      tools: { allow: ["read", "write", "edit", "bash", "orc_*"], deny: ["web_fetch"] },
+      egress: ["github.com", "registry.npmjs.org", "*.amazonaws.com"],
+      secrets: [{ name: "GITHUB_TOKEN", scope: ["github.com"], mode: "inject" }],
+    }),
+  },
+  limits: { maxAgents: 12, wallClock: "45m", usdBudget: 25 },
+});
 ```
 
-`mode: inject` is the point: the secret is named in policy but *resolved only inside the broker*.
-`orc.yaml` never contains a secret value, and neither does the sandbox.
+`mode: "inject"` is the point: the secret is named in policy but *resolved only inside the broker*.
+The config never contains a secret value, and neither does the sandbox.
 
 **Trust.** Pi's `project_trust` event means a repo's `.pi/` resources are not loaded until approved.
-We bind that to orc's own model: a plugin change alters `orc.yaml`'s policy hash, and a run whose
-policy hash is unapproved requires explicit promotion. Orchestration plugins are code with network
+We bind that to orc's own model: a plugin change alters the policy hash, and a run whose policy hash
+is unapproved requires explicit promotion. Orchestration plugins are code with network
 and credential implications, and they get reviewed as such.
 
 ---
@@ -305,6 +310,11 @@ and credential implications, and they get reviewed as such.
 ## 5. Milestones
 
 Each milestone has exit criteria; none is "done" on code alone.
+
+> **Start with the POC, not M1.** [poc.md](poc.md) defines a ~4-week prototype that proves the
+> load-bearing claims (harness fit, tool gating, credential isolation, orchestration ergonomics)
+> while deferring AWS, the egress gateway, and the model catalog behind named seams. The milestones
+> below describe the full system; the POC is how it starts.
 
 ### M0 — Spike: drive Pi as a subprocess (1 week)
 
@@ -407,6 +417,35 @@ which for multi-minute agent tasks it will not.
 
 Fan-in happens through **artifacts and diffs**, not a shared tree — `orc_artifact` and the
 `inputs:` field on a run are the supported channels for moving work between agents.
+
+### D2 — TypeScript everywhere; no YAML (decided)
+
+Orchestration logic is TypeScript. Configuration is TypeScript. There is no YAML in orc, and no
+declarative graph format.
+
+The reasoning is about expressiveness, not taste. Real agent lifecycles contain cycles that return
+to earlier phases, escape hatches on accumulated state (attempt counts, spend), and branches taken
+on the *content* of a previous result. Declarative formats cannot express those, so they acquire
+`if:` expressions, `${{ }}` interpolation, and eventually a half-specified scripting language —
+producing a bad programming language with no type checker, no debugger, and no tests. Starting from
+TypeScript means loops, `try/catch`, and early returns are already there, correct, and tooled.
+
+The security model still needs a policy that is fixed and reviewable before anything runs. That is
+preserved by separating **when** code is evaluated rather than what format it is written in:
+
+- **`orc.config.ts` is policy.** Evaluated once by the control plane in a sandboxed Node context
+  with no network and no run state, then snapshotted to JSON, hashed, and frozen. It is a config
+  file in the sense `vite.config.ts` is one: TypeScript that produces a value. Helper functions and
+  shared constants are fine; branching on run state is impossible, because there is no run yet.
+- **`.pi/extensions/*.ts` is logic.** Ordinary code, executed throughout the run.
+
+Because policy is frozen before the first agent starts, a plugin cannot widen its own network or
+secret policy mid-run — the property the discarded "yaml wins over code" rule existed to protect.
+Runtime **narrowing** is allowed (a workflow may grant a step less than its role permits); widening
+is rejected by the control plane.
+
+What stays out of config: conditions, loops, phases, steps, retries, DAGs. Config answers "what is
+this role allowed to do." Workflows answer "what happens, in what order, and when do we go back."
 
 ## 9. Open questions
 

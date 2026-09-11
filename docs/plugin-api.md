@@ -16,7 +16,7 @@ Pi discovers project-local resources under `.pi/`, searching up the directory tr
 
 ```
 your-repo/
-├── orc.yaml                          # policy: roles, models, egress, secrets, limits
+├── orc.config.ts                     # policy: roles, models, egress, secrets, limits (a value, not logic)
 ├── .pi/
 │   ├── extensions/
 │   │   └── orchestrate.ts            # your orchestration plugin
@@ -28,7 +28,7 @@ your-repo/
 └── src/ ...
 ```
 
-Nothing here is orc-specific except `orc.yaml`. A repo set up for orc is a repo set up for Pi,
+Nothing here is orc-specific except `orc.config.ts`. A repo set up for orc is a repo set up for Pi,
 which means the same skills work when a developer runs `pi` locally, and orchestration plugins are
 developed with the ordinary Pi toolchain.
 
@@ -56,45 +56,76 @@ pi install git:github.com/acme/orc-ship@v1.2.0
 
 ## 2. Two authoring styles
 
-### 2.1 Code-driven — `defineWorkflow`
+### 2.1 Code-driven — `defineWorkflow` (the default)
 
-For work whose shape is known. The orchestration is a TypeScript function; no planning LLM sits in
-the loop deciding what to do next. Deterministic, testable, cheap, and debuggable.
+The orchestration is a TypeScript function. Control flow is ordinary control flow: `while`, `if`,
+`try/catch`, early `return`. Loops back to earlier phases, escape hatches, and conditional bail-outs
+need no special support because they are just code.
 
 ```ts
 import { defineWorkflow, z } from "@orc/plugin-sdk";
 
-const Plan = z.object({
-  tasks: z.array(z.object({ title: z.string(), prompt: z.string(), paths: z.array(z.string()) })),
+const Review = z.object({
+  approved: z.boolean(),
+  blocking: z.array(z.string()),
+  needsRedesign: z.boolean(),
 });
 
 export default defineWorkflow("ship-feature", async (orc, input: { issue: string }) => {
-  // One-shot structured query — no session kept alive.
-  const plan = await orc.agent("architect").ask(`Break down issue ${input.issue}`, {
-    schema: Plan,
-  });
+  const plan = await orc.agent("architect").ask(`Break down ${input.issue}`, { schema: Plan });
 
-  // Fan out. Each is its own sandbox, its own Pi session, its own workspace clone.
-  const results = await orc.parallel(
-    plan.tasks.map((task) => () =>
-      orc.agent("backend").run(task.prompt, {
-        workspace: { paths: task.paths },
-        label: task.title,
-      }),
-    ),
-    { maxConcurrency: 4 },
-  );
+  // Long-lived sessions: looping back to an agent keeps its context rather than rebuilding it.
+  const impl = await orc.agent("backend").session({ workspace: { paths: plan.paths } });
+  const reviewer = await orc.agent("reviewer").session({ workspace: "read-only" });
 
-  // Fan in. The reviewer sees the combined diff, not the chatter.
-  const review = await orc.agent("reviewer").run("Review the combined diff for correctness.", {
-    inputs: results.map((r) => r.diff),
-    schema: z.object({ approved: z.boolean(), reason: z.string() }),
-  });
+  await impl.send(plan.prompt);
+  let attempt = 0;
 
-  if (!review.approved) return orc.fail(review.reason);
-  return orc.openPullRequest({ branch: `orc/${input.issue}`, results });
+  while (true) {
+    const work = await impl.next();
+    const review = await reviewer.ask(`Review this diff:\n${work.diff}`, { schema: Review });
+
+    if (review.approved) break;
+
+    // Escape hatch: bounded retries, then hand it to a human rather than burning budget.
+    if (++attempt >= 3) {
+      return orc.escalate("Three review rounds without approval", { work, review });
+    }
+
+    // Escape hatch: a design problem is not fixable by iterating on the implementation,
+    // so jump back to an *earlier* phase instead of looping in place.
+    if (review.needsRedesign) {
+      const revised = await orc.agent("architect").ask(`Revise the plan: ${review.blocking}`, {
+        schema: Plan,
+      });
+      await impl.send(`The plan changed. Start from: ${revised.prompt}`);
+      continue;
+    }
+
+    // Ordinary loop back: same session, incremental correction.
+    await impl.send(`Address these blocking issues:\n${review.blocking.join("\n")}`);
+  }
+
+  return orc.openPullRequest({ branch: `orc/${input.issue}` , from: impl });
 });
 ```
+
+Three things this shows that a declarative graph cannot express:
+
+**Loops that return to an earlier phase.** The `needsRedesign` branch goes back to the architect,
+then re-enters implementation. That is a cycle in the graph, with the decision to take it made from
+the content of a result.
+
+**Escape hatches on accumulated state.** `attempt >= 3` depends on how many times the loop has run,
+which is not a property of any single node.
+
+**Cheap re-entry.** `impl` is a live Pi session, so looping back is a `send()`, not a re-spawn.
+The agent keeps its context, its workspace, and its understanding of what it already tried — the
+single biggest cost difference between an imperative orchestrator and a DAG runner that rebuilds
+state at every node.
+
+Sessions also `fork()`, so a workflow can explore a branch speculatively and abandon it without
+polluting the main line — Pi's session tree makes this nearly free.
 
 Run it:
 
@@ -173,7 +204,7 @@ naturally but serializes the fleet — the split is what makes fan-out expressib
 ## 4. `@orc/plugin-sdk` surface
 
 ```ts
-// Roles — declared in code, merged with orc.yaml (yaml wins on security-relevant fields)
+// Roles — may narrow what orc.config.ts grants, never widen it
 defineRole(pi, name, { skill?, model?, tools?, workspace?, image?, timeout? }): void
 
 // Workflows
@@ -215,60 +246,88 @@ forwarded verbatim from the RPC stream. We do not invent a parallel event vocabu
 
 ---
 
-## 5. `orc.yaml`
+## 5. `orc.config.ts` — policy as a value, not a language
 
-The security-relevant surface, separated from plugin code on purpose: it is the file a reviewer
-reads to understand what a run can reach.
+**orc has no YAML.** Orchestration logic is TypeScript, and so is configuration. Nothing about a
+run is expressed in a declarative graph format.
 
-```yaml
-version: 1
+This is a deliberate rejection of the YAML-harness pattern. Real agent lifecycles have loops that
+return to earlier phases, escape hatches on iteration count or cost, branches taken on the content
+of a previous result, and early bail-outs. Declarative formats cannot express those, so they grow
+`if:` expressions, `${{ }}` interpolation, and a half-specified scripting language — at which point
+you have a bad programming language with no types, no debugger, and no tests. We start from the
+good one.
 
-defaults:
-  image: ghcr.io/acme/pi-kit-node:20
-  model: { provider: bedrock, id: anthropic.claude-opus-4-5 }
-  timeout: 20m
+The security model still needs a fixed, reviewable policy, and it gets one without YAML, by
+separating **when** things are evaluated rather than **what file format** they use:
 
-roles:
-  architect:
-    tools: { allow: [read, grep, orc_*], deny: [write, edit, bash] }
-    egress: { allow: [] }                       # reads the workspace; needs nothing else
+| | Evaluated | By whom | Can it branch on run state? |
+| --- | --- | --- | --- |
+| **Policy** (`orc.config.ts`) | Once, before any agent starts | Control plane, in a plain sandboxed Node context with no network | **No** — it produces a value |
+| **Logic** (`.pi/extensions/*.ts`) | Throughout the run | The orchestrator agent | **Yes** — it is ordinary code |
 
-  backend:
-    skill: backend-engineer
-    tools: { allow: [read, write, edit, bash, orc_*] }
-    egress:
-      allow: [github.com, api.github.com, registry.npmjs.org]
-    secrets:
-      - { name: GITHUB_TOKEN, scope: [github.com, api.github.com], mode: inject }
-      - { name: NPM_TOKEN,    scope: [registry.npmjs.org],         mode: inject }
+Policy is a config file in the sense `vite.config.ts` or `eslint.config.js` is one: TypeScript that
+*evaluates to a static value*. You get types, autocomplete, shared constants, and helper functions
+to build role sets — while the control plane still gets a single frozen JSON snapshot it can hash,
+diff, and enforce.
 
-  reviewer:
-    skill: strict-reviewer
-    workspace: read-only
-    tools: { allow: [read, grep, orc_*], deny: [write, edit, bash] }
-    egress: { allow: [] }
+```ts
+// orc.config.ts
+import { defineConfig, role } from "@orc/sdk";
 
-limits:
-  max_agents: 12
-  wall_clock: 45m
-  usd_budget: 25
+const readOnly = { allow: ["read", "grep", "orc_*"], deny: ["write", "edit", "bash"] } as const;
 
-approvals:
-  # Irreversible actions stop and ask a human, via Pi's extension UI sub-protocol over RPC.
-  require_human: [push_to_default_branch, deploy]
+export default defineConfig({
+  defaults: {
+    image: "ghcr.io/acme/pi-kit-node:20",
+    model: { provider: "bedrock", id: "anthropic.claude-opus-4-5" },
+    timeout: "20m",
+  },
+
+  roles: {
+    architect: role({ tools: readOnly, egress: [] }),
+
+    backend: role({
+      skill: "backend-engineer",
+      tools: { allow: ["read", "write", "edit", "bash", "orc_*"] },
+      egress: ["github.com", "api.github.com", "registry.npmjs.org"],
+      secrets: [
+        { name: "GITHUB_TOKEN", scope: ["github.com", "api.github.com"], mode: "inject" },
+        { name: "NPM_TOKEN", scope: ["registry.npmjs.org"], mode: "inject" },
+      ],
+    }),
+
+    reviewer: role({ skill: "strict-reviewer", workspace: "read-only", tools: readOnly, egress: [] }),
+  },
+
+  limits: { maxAgents: 12, wallClock: "45m", usdBudget: 25 },
+  approvals: { requireHuman: ["push_to_default_branch", "deploy"] },
+});
 ```
 
-Three things to notice:
+Four properties hold:
 
-**No secret values.** `mode: inject` names a secret; the value is resolved only inside the broker,
-on egress, for in-scope hosts. `orc.yaml` is committed to the repo and contains nothing sensitive.
+**No secret values.** `mode: "inject"` names a secret; the value is resolved only inside the broker,
+on egress, for in-scope hosts. The config is committed and contains nothing sensitive.
 
-**yaml wins over code.** `defineRole` in a plugin may set a model or a skill, but if `orc.yaml`
-constrains `tools`, `egress`, or `secrets`, the yaml is authoritative. Security policy is not
-overridable by the code it governs.
+**Policy is frozen before agents run.** It is evaluated once, in a context with no network and no
+run state, then snapshotted and hashed. An orchestration plugin cannot widen its own network
+policy mid-run, because by the time any plugin code executes the policy is already immutable. This
+is the property the old "yaml wins over code" rule was protecting, preserved without the YAML.
 
-**Empty allowlists are common and correct.** The architect and reviewer roles reach nothing. Most
-agents need less network than their authors assume, and the default should be nothing.
+**Narrowing at runtime is allowed; widening is not.** A workflow may hand an agent *less* than its
+role permits (`orc.agent("backend", { egress: [] })` for a step that should not touch the network).
+The reverse is rejected by the control plane, not by convention.
+
+**Empty egress is common and correct.** Architect and reviewer reach nothing. Most agents need less
+network than their authors assume, and the default is nothing.
+
+### What does *not* belong here
+
+No conditions, no loops, no phases, no DAG, no step definitions, no retry logic, no branching. If
+you find yourself wanting any of it in `orc.config.ts`, it belongs in a workflow. The config answers
+"what is this role allowed to do"; the workflow answers "what happens, in what order, and when do
+we go back."
 
 ---
 
@@ -277,8 +336,8 @@ agents need less network than their authors assume, and the default should be no
 Pi fires `project_trust` before loading project-local `.pi/` resources, and caches decisions in
 `~/.pi/agent/trust.json`. orc binds its own approval to the same moment.
 
-Every run resolves a **policy hash** over `orc.yaml` plus the content hashes of every loaded
-extension. A run whose policy hash has not been approved for the target environment requires
+Every run resolves a **policy hash** over the evaluated `orc.config.ts` snapshot plus the content
+hashes of every loaded extension. A run whose policy hash has not been approved for the target environment requires
 explicit promotion:
 
 ```bash

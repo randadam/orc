@@ -146,12 +146,60 @@ The practical caveat is capability, not availability: **open-weight models vary 
 reliability**, and an agent loop that mis-calls tools fails in expensive, hard-to-debug ways. This
 argues for a mixed fleet rather than a single model choice — a strong model for the orchestrator and
 architect roles, where a bad plan costs a whole fan-out, and cheaper open-weight models for narrow,
-well-specified worker roles. `orc.yaml` already sets `model` per role, so this is a policy decision
-per role and not an architectural one. Validate any open-weight model against the real tool schemas
+well-specified worker roles. `orc.config.ts` already sets `model` per role, so this is a policy
+decision per role and not an architectural one. Validate any open-weight model against the real tool schemas
 before trusting it in a worker role; the recorded-session test harness (plugin-api.md §7) is the
 cheap way to do that.
 
-### 3.5 Budget enforcement
+### 3.5 The model catalog must come from the broker
+
+Pi's model layer normalizes *protocol*, not *capability*. Differences it cannot normalize are
+declared as data on each `Model` descriptor — `contextWindow`, `maxTokens`, `cost`, `reasoning`,
+`input`, `thinkingLevelMap`, and a `compat` flag set for provider quirks. Pi uses those values
+locally: `contextWindow` drives when compaction fires, `cost` drives the spend display, `input`
+gates whether images are sent.
+
+**Those descriptors live in the sandbox.** If the broker fronts several models behind one provider
+entry and `@orc/pi` hardcodes the list, the sandbox's beliefs drift from what the broker actually
+permits — an agent compacts at the wrong threshold, or reports a cost computed from stale rates, or
+requests a model its role is not allowed to use and only discovers this at the gateway.
+
+So the broker owns the catalog and serves it:
+
+- The broker exposes `GET /m/catalog`, returning the models this run's role may use, with the
+  descriptor fields resolved from run policy.
+- `@orc/pi` populates them through Pi's own hook — `registerProvider` accepts an async
+  `refreshModels({ signal })`, which exists precisely for dynamic discovery.
+- The role's model allowlist is then enforced in one place instead of being duplicated in the
+  sandbox and re-checked at the gateway.
+
+The sentinel authenticates the catalog request, so the catalog is per-run and per-role without any
+extra credential.
+
+### 3.6 Inbound wire format is a per-role choice
+
+The broker's inbound format is independent of its upstream. Translating to Bedrock Converse happens
+regardless, so what Pi speaks *to* the broker is a free choice — and not a purely cosmetic one.
+
+Pi registers API implementations by wire protocol (`anthropic-messages`, `openai-completions`,
+`openai-responses`, `mistral-conversations`), not by provider, which is why many providers share one
+implementation. But the two formats do not expose the same control surface:
+
+- `samplingParams` — a free-form object merged verbatim into the request body — applies **only to
+  OpenAI-compatible APIs**. Knobs like vLLM's `top_k` or llama.cpp's `min_p` are unreachable through
+  `anthropic-messages`.
+- The richest `compat` flags (`supportsDeveloperRole`, `maxTokensField`, `requiresToolResultName`,
+  `thinkingFormat`, `supportsReasoningEffort`) are likewise OpenAI-side.
+
+So: `anthropic-messages` inbound for frontier-model roles, and `openai-completions` inbound for
+open-weight worker roles that need sampling control. Both terminate at the same broker and the same
+Converse call upstream. Pi selects per provider registration, so this is one field in role policy,
+not a fork in the broker.
+
+This is a **v1 concern, not a POC one** — see [poc.md](poc.md), which pins a single inbound format
+and keeps the choice behind one interface until there is a second role that needs it.
+
+### 3.7 Budget enforcement
 
 The broker sees every token in both directions, which makes it the only correct place to enforce
 spend. Per-run counters in DynamoDB, updated per response. When a run crosses `limits.usd_budget`,
@@ -185,7 +233,8 @@ verification. Better to make it an explicit, logged policy decision per host.
 
 ### 4.2 Policy evaluation
 
-Per request, against the run's resolved policy bundle (from `orc.yaml` + role + run overrides):
+Per request, against the run's resolved policy bundle (the frozen `orc.config.ts` snapshot + role +
+any runtime narrowing):
 
 ```
 allow if  host matches role.egress.allow          (exact or single-label wildcard)
