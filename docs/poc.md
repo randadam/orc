@@ -75,6 +75,11 @@ by hand and pointing the runner at the resulting digest; the filtering and cache
 The POC still targets a **single repository** — but now because we have only picked one, not because
 the design is repo-specific. Adding a second is a build, not a redesign.
 
+The POC also assumes the target is **TypeScript**, and allows exactly one environment mutation:
+adding a registry-hosted npm package via pnpm, through an approved request. That keeps the guard
+surface small enough to get right, and means no image is ever rebuilt mid-run — a pnpm package is a
+workspace change, not a container change ([environments.md](environments.md) §6).
+
 ### The threat model goes live here
 
 Running the target repo's test suite means **executing arbitrary code from that repository inside

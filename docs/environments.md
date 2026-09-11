@@ -230,17 +230,75 @@ outside:
 Step 5 is the point. A dependency that exists only in a running container is both unreproducible and
 unreviewed; one that lands in the lockfile is neither.
 
+### POC constraint: TypeScript, pnpm, and exactly one allowed mutation
+
+The general problem — any ecosystem, any package manager, system packages included — has too many
+shapes to guard well on the first pass. So the POC assumes **every target project is TypeScript**,
+and permits exactly one kind of environment mutation:
+
+> **Adding a registry-hosted npm package as a `dependency` or `devDependency`, via an approved
+> `orc_request_package`, installed with pnpm.**
+
+Everything else is rejected. This has a large simplifying consequence worth stating plainly: a pnpm
+package is a **workspace** change, not a **container** change. `node_modules` and the lockfile live
+in the workspace; the image is untouched. Only system packages force a rebuild — and those are out
+of scope here. **So the POC never rebuilds an image mid-run, and never restarts a sandbox to change
+an environment.** The unplanned path is: fetch through the broker, install offline, continue in the
+same session.
+
+### What pnpm already guards
+
+pnpm's own defaults cover more of this than expected, which is part of why it is the right choice:
+
+- **Dependency lifecycle scripts do not run on install** (pnpm 10+). Packages needing a build must be
+  listed in `pnpm.onlyBuiltDependencies`. This was a direct response to supply-chain attacks
+  delivered through `postinstall`, and it means the default install path executes no third-party code.
+- **`minimumReleaseAge` defaults to 1440 minutes** (pnpm 11), so a version published in the last day
+  will not resolve. Most compromise campaigns depend on being installed before detection; a 24-hour
+  delay defeats the common case.
+- **`blockExoticSubdeps` defaults to true**, keeping non-registry transitive dependencies out.
+
+orc's job is mostly to stop these from being *weakened*, not to reimplement them.
+
+### The guard list
+
+| Rejected | Why |
+| --- | --- |
+| Non-registry specifiers — `git:`, `github:`, `file:`, `link:`, tarball URLs | Git dependencies still execute `prepare` / `prepublish` / `prepack` during fetch, bypassing the lifecycle-script block entirely ([GHSA-379q-355j-w6rj](https://github.com/pnpm/pnpm/security/advisories/GHSA-379q-355j-w6rj)). This is the sharpest hole in the ecosystem's defenses. |
+| Edits to `pnpm.onlyBuiltDependencies` or `dangerouslyAllowAllBuilds` | Re-enables arbitrary code execution at install time |
+| Edits to `minimumReleaseAge` or `blockExoticSubdeps` | Weakens the supply-chain defaults above |
+| Edits to `packageManager`, `engines`, or the Node version | Environment change, not a package change — needs a rebuild |
+| Global installs (`pnpm add -g`) | Mutates container state outside the workspace; unreproducible |
+| Any edit under `.devcontainer/**` | Environment change — rebuild path, out of POC scope |
+| System packages (`apt-get`, …) | Same; escalates to a human instead |
+| A `package-lock.json` or `yarn.lock` appearing | Signals a package-manager switch |
+
+### Enforcement is two layers, and the first is free
+
+**Prevention: there is no network.** An agent running `pnpm add foo` from bash simply cannot reach
+the registry. The no-egress property is not just a security boundary here — it is what makes the
+request tool the *only* path to a new package. Nothing needs to intercept or police the bash tool.
+
+**Detection: the lockfile diff is reconciled at merge.** Every change to `package.json` and
+`pnpm-lock.yaml` must correspond to an approved request, and the guarded fields above must be
+unchanged. A mismatch fails the slice and escalates, with the diff attached. This catches hand-edited
+manifests, packages pulled from a warm pnpm store, and any attempt to widen the install-time
+execution surface.
+
+Neither layer depends on the model behaving well, which is the point.
+
 ### Two tiers, by cost
 
 **Planned (cheap, preferred).** The slice spec declares expected new dependencies during feasibility.
 The environment is rebuilt once, before implementation starts, batched across slices. No restart, no
 stall, and the principal reviews the dependency list as part of approving the spec.
 
-**Unplanned (the escape hatch).** Mid-implementation, `orc_request_package` fires. Language-level
-packages resolve in place — fetch, offline install, continue in the same session. System packages
-(apt, and anything else needing image layers) cannot be installed live: they require a rebuild and a
-sandbox restart, which reuses the machinery already required for crash resume ([poc.md](poc.md) §8,
-criterion 4). The workspace and the Pi session persist; the agent resumes with the new environment.
+**Unplanned (the escape hatch).** Mid-implementation, `orc_request_package` fires. In the POC this
+always resolves in place — fetch through the broker, `pnpm install --offline`, continue in the same
+session — because pnpm packages do not touch the image. Beyond the POC, system packages need a
+rebuild and a sandbox restart, reusing the machinery already required for crash resume
+([poc.md](poc.md) §8, criterion 4); the workspace and Pi session persist and the agent resumes with
+the new environment.
 
 The planning path exists because the unplanned one costs minutes. Making the senior declare
 dependencies during feasibility is worth doing even though the escape hatch exists.
@@ -288,10 +346,12 @@ properties are what the rest depends on, and none of them require the full imple
    M4).
 4. **Non-Docker devcontainers.** The spec permits other orchestrators; orc assumes OCI images. Fine
    for now, worth not designing against.
-5. **Does an environment change invalidate memoized steps?** A rebuild produces a new image digest.
-   Completed artifacts are facts about what happened and should not be discarded, but new work should
-   use the new environment — and whether a *re-run* of a step should key on the digest is unresolved.
-   Keying implementation steps on it and planning steps not on it is the likely answer; it needs a
-   real case before being fixed in code.
-6. **Request rate and batching.** If every slice triggers a rebuild, the run stalls on image builds.
-   Batching across concurrently-ready slices is the obvious mitigation, unmeasured so far.
+5. ~~Does an environment change invalidate memoized steps?~~ **Decided: no.** A rebuild is an
+   implementation detail and does not enter step cache keys. Completed artifacts are facts about what
+   happened; new work simply uses the current environment. (In the POC the question does not arise at
+   all — pnpm-only mutation means no mid-run rebuilds.)
+6. **Request rate and batching.** Beyond the POC, if every slice triggers a rebuild the run stalls on
+   image builds. Batching across concurrently-ready slices is the obvious mitigation, unmeasured.
+7. **Ecosystems beyond TypeScript.** The guard list is pnpm-shaped. Python, Go and Rust each have a
+   different install-time execution story (`setup.py`, build scripts, `build.rs`) and each needs its
+   own pass. Deliberately deferred, not assumed to generalize.
