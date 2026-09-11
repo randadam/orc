@@ -24,7 +24,7 @@ prompt + repo
    │      QA authors ──────────── E2E test plan
    │      ops authors ─────────── deployment runbook
    │
-   ├─ 3. principal → slice graph  (dependsOn + writes, acyclic)
+   ├─ 3. principal → slice graph  (capability-level dependsOn, acyclic)
    │
    ├─ 4. scheduler ────────────── ready slices run concurrently
    │      per slice:
@@ -32,7 +32,8 @@ prompt + repo
    │        senior → local tests (unit, contract, integration)
    │        senior → implement, or fan out subslices
    │        implement until slice tests green
-   │        principal → review, merge, re-verify
+   │        senior resolves merge conflicts, re-verify on merged tree
+   │        principal → review, merge
    │
    ├─ 5. QA sign-off ──────────── evidence: coverage report
    ├─ 6. ops sign-off ─────────── evidence: metrics present in diff
@@ -47,12 +48,7 @@ Every loop has a cap. Every cap escalates to a human. Every gate cites evidence.
 ## 2. Scheduling: the DAG is the model, lanes are the view
 
 The requirement is dependency-driven assignment — "B after A, D after C, run the two chains
-concurrently." That is right. But **lanes are the wrong primitive to schedule on**, for three
-reasons:
-
-**Lanes order work; they do not partition it.** Two independent lanes can still write the same
-file. Ordering says nothing about disjointness, so lane-parallel slices collide exactly like
-unordered ones — just later, during merge, when the cost is highest.
+concurrently." That is right. But **lanes are the wrong primitive to schedule on**, for two reasons:
 
 **Cross-lane edges destroy the lane abstraction.** The moment D (lane 2) depends on B (lane 1), a
 lane is no longer a schedulable unit. The usual repair is a barrier across all lanes, which is
@@ -61,10 +57,10 @@ only D needed to wait for B. With agents whose durations vary by an order of mag
 barriers mean most of the fleet idles.
 
 **A Gantt chart is a rendering of a schedule, not a scheduling algorithm.** The bars are output. The
-input is a dependency graph with resource constraints. Encoding lanes as the primitive throws away
-the edges and then tries to reconstruct them with barriers.
+input is a dependency graph. Encoding lanes as the primitive throws away the edges and then tries to
+reconstruct them with barriers.
 
-So slices carry edges and scope, and the scheduler derives everything else:
+So slices carry edges, and the scheduler derives everything else:
 
 ```ts
 interface Slice {
@@ -72,49 +68,66 @@ interface Slice {
   title: string;
   acceptance: string[];        // testable criteria
   dependsOn: string[];         // slice ids that must be merged first
-  writes: string[];            // path globs this slice may modify
-  reads?: string[];            // paths it needs but must not modify
 }
 ```
 
-A slice is **ready** when every `dependsOn` is merged *and* its `writes` do not overlap any running
-slice. That single rule gives you:
+A slice is **ready** when every `dependsOn` is merged. That is the whole rule. It gives you:
 
 - **Dependencies** — what you asked for.
 - **Lanes for free** — a dependency chain *is* a lane. Render them as a Gantt view for the human;
   never schedule on them.
 - **Cross-lane edges** — ordinary edges, no barriers, no global stalls.
-- **Disjointness** — which lanes alone never provided.
 - **Maximum parallelism** — anything ready runs, rather than waiting on a lane's slowest member.
-
-It is also less code than lanes-plus-checkpoints. The general mechanism is the simpler one here.
-
-### Write scope is enforced, not trusted
-
-The principal is an LLM, so `writes` will sometimes be wrong. Rather than trusting it:
-
-- The runner mounts paths outside a slice's `writes` **read-only**, so a violation fails at the
-  filesystem rather than at merge.
-- At merge, the diff is checked against the declared scope. Out-of-scope changes fail the slice and
-  escalate with the diff attached.
-
-This turns a soft assertion into a checkable invariant, and it reuses the tool-policy machinery
-already in v1. If two slices genuinely must write the same file, that is the signal they are one
-slice — or that one depends on the other. Both are expressible; "concurrent writers to one file"
-is not.
 
 Cycles are rejected before scheduling (`orc.assertAcyclic`). An LLM will emit one eventually.
 
+### Dependencies are capability-level, not file-level
+
+A dependency means *this work cannot begin until that capability exists* — "phone-based auth cannot
+start until we are collecting phone numbers." It is the judgement a project manager makes from the
+feature description, not an analysis of the codebase. The principal produces these edges from the
+plan, and they are reviewable by a human who has never opened the repo.
+
+**There is deliberately no file-level scoping.** An earlier draft had slices declare the paths they
+may write, enforced with read-only mounts. That was wrong, for a reason worth recording so it does
+not get reintroduced: you cannot predict which files solving a problem will require. An agent that
+hits an unforeseen issue — a bug in a shared helper, a missing migration, a type that needs widening
+— must be able to fix it. Constraining writes to a predicted set converts "agent solves the problem"
+into "agent fails at the boundary," which is strictly worse than a merge conflict.
+
+The honest consequence: **two concurrent slices can touch the same file.** That is accepted.
+
+### Merge conflicts are expected, and that is what merges are for
+
+Real teams do not prevent conflicts by partitioning the filesystem in advance. They let people work,
+then resolve at integration time. Same here.
+
+Slices branch from the merged head as of when they start. Merges are **serialized** — one slice
+integrates at a time, each rebasing onto whatever landed before it, exactly like merging PRs to a
+trunk. On conflict:
+
+1. **The slice's own senior resolves it.** They wrote the code and their session still holds the
+   context for why. This matches real practice: the author resolves, the reviewer reviews.
+2. **Tests re-run on the merged tree**, not the pre-merge branch. Green-at-clone-time is not
+   green-at-merge-time, and that gap is where silent breakage lives.
+3. **The principal reviews the resolved diff** and merges.
+4. **Escalate** if the senior cannot resolve it or the resolution fails review — a conflict where
+   both sides changed the same logic is a design question, not a merge question.
+
+Dependency ordering also happens to be a decent *proxy* for conflict avoidance, without being
+designed as one: features that touch the same area tend to depend on each other, so they tend to
+land in sequence anyway. Imperfect, free, and enough.
+
 ### What this costs versus a human team
 
-A human team parallelizes *harder* than this, because a person can start against a colleague's
-not-yet-merged interface and renegotiate mid-flight. Agents in fresh clones cannot renegotiate —
-the repair mechanism is conversation, and they do not have it. So `dependsOn` means *fully blocked
-until merged*, which serializes more than a real team would.
+A human team parallelizes *harder*, because a person can start against a colleague's not-yet-merged
+interface and renegotiate mid-flight. Agents in fresh clones cannot renegotiate — the repair
+mechanism is conversation, and they do not have it. So `dependsOn` means *fully blocked until
+merged*, which serializes more than a real team would.
 
 That is the accepted v2 tradeoff. The v3 escape hatch, if throughput demands it, is letting a slice
-publish an interface early so dependents can start against it — but that is an optimization to make
-once the strict version works and the wait times are measured.
+publish an interface early so dependents can start against it — an optimization to make once the
+strict version works and the wait times are measured.
 
 ### Failure semantics
 
@@ -204,8 +217,8 @@ One mechanism, used everywhere: `orc.escalate(reason, context)` suspends the run
 question, and records the answer as an artifact.
 
 Triggers: baseline not green; review loop hits 5 with unresolved blockers; feasibility loop hits 3;
-a slice fails implementation; write-scope violation; merge conflict the principal cannot resolve;
-a dependency cycle.
+a slice fails implementation; a merge conflict the slice's senior cannot resolve, or whose
+resolution fails review; a dependency cycle.
 
 The human's options are `abort`, `proceed` (with the decision recorded as documented risk), or
 `amend` (edit the artifact and resume from that step). In v2 this is a terminal prompt; Pi's
@@ -269,9 +282,10 @@ plan, test plan and runbook and finds them genuinely useful.
 **S2 — real execution, one slice.** Senior feasibility loop, implementation, slice tests, principal
 review and merge, re-verify. Single slice only — no scheduler yet.
 
-**S3 — the scheduler.** Multiple slices, `dependsOn` + `writes`, read-only mounts outside scope,
-merge-time scope check, blocked-subgraph failure handling. Exit: a feature with a real dependency
-chain and two concurrent slices completes.
+**S3 — the scheduler.** Multiple slices, capability-level `dependsOn`, serialized integration with
+author-resolved conflicts and re-verify on the merged tree, blocked-subgraph failure handling.
+Exit: a feature with a real dependency chain and two concurrent slices completes — including at
+least one genuine merge conflict resolved without human help.
 
 **S4 — fan-out and sign-offs.** Subslices on the light tier, QA and ops evidence-based gates, final
 artifact assembly.
@@ -281,12 +295,16 @@ artifact assembly.
 ## 9. Open items
 
 1. **Slice granularity has no defined target.** "Independently workable" is not a size. Too large
-   and the senior's context overflows; too small and coordination dominates. Needs a stated
-   heuristic (files touched? acceptance criteria count?) and tuning against real runs.
+   and the senior's context overflows; too small and coordination dominates. With no file-level
+   scoping, granularity and dependency structure are the *only* levers on conflict rate, which
+   raises the stakes on getting it right. Needs a stated heuristic and tuning against real runs.
 2. **Re-verify cost after each merge.** Running the full suite per merge serializes the tail of the
    run. Affordable for small repos; needs affected-test selection for large ones.
 3. **No rollback of a bad merge.** If a merge passes review but breaks a later slice, the recovery
    path is unspecified — currently escalation.
+6. **Conflict rate is unknown.** Concurrent slices may touch the same files often enough that the
+   resolve-and-reverify tail dominates the run. Measure it before optimizing; if it bites, the lever
+   is slice granularity, not filesystem partitioning.
 4. **The PRD loop may converge on agreement rather than quality.** Reviewers that see the previous
    round's rejections may simply stop objecting. Worth checking whether round 5 findings are
    substantively weaker than round 1, or just fewer.
@@ -356,20 +374,20 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
                            { schema: Runbook })),
   ]);
 
-  // 3 — slice graph: edges and write scope, not lanes.
+  // 3 — slice graph: capability-level edges, not lanes and not file scopes.
   const slices = await orc.step("slices", { schema: SliceGraph }, () =>
-    principal.ask(`Decompose into slices. Declare dependsOn and writes for each.`,
+    principal.ask(`Decompose into slices. Declare capability-level dependsOn for each.`,
                   { schema: SliceGraph }));
   orc.assertAcyclic(slices);
 
-  // 4 — schedule. Ready = deps merged AND write scope free.
+  // 4 — schedule. Ready = all deps merged. Conflicts are resolved at integration, not prevented.
   const built = await orc.schedule(slices, {
-    dependsOn: (s) => s.dependsOn,
-    writes: (s) => s.writes,
+    dependsOn: (s) => s.dependsOn,        // capability-level; no file scoping
 
     run: async (slice, ctx) => {
+      // Full tree, writable. An agent that hits an unforeseen problem must be able to fix it.
       const senior = await orc.agent("senior").session({
-        workspace: { base: ctx.mergedHead, writable: slice.writes },
+        workspace: { base: ctx.mergedHead },
       });
 
       // Feasibility: bounded negotiation with the principal.
@@ -382,7 +400,7 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
 
       // Implementation starts from the written spec, not the negotiation transcript.
       const impl = await orc.agent("senior").session({
-        workspace: { base: ctx.mergedHead, writable: slice.writes },
+        workspace: { base: ctx.mergedHead },
       });
 
       const work = spec.subslices?.length
@@ -394,10 +412,16 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
       const tests = await impl.run("Run this slice's tests until green.", { evidence: true });
       if (!tests.green) return orc.escalate(`Slice ${slice.id} could not reach green`, { tests });
 
-      // Merge is serialized; re-verify against the moving base.
-      const review = await principal.ask(`Review diff:\n${tests.diff}`, { schema: Review });
+      // Merge is serialized. The base has moved; the author resolves, then we re-verify.
+      const merged = await ctx.integrate(slice, {
+        resolveWith: impl,                // the senior who wrote it holds the context
+        reverify: true,                   // tests run on the merged tree, not the branch
+      });
+      if (!merged.ok) return orc.escalate(`Slice ${slice.id} could not integrate`, merged);
+
+      const review = await principal.ask(`Review merged diff:\n${merged.diff}`, { schema: Review });
       if (!review.approved) return orc.escalate(`Slice ${slice.id} rejected`, { review });
-      return ctx.merge(slice, { reverify: true });
+      return ctx.land(slice, merged);
     },
   });
 
