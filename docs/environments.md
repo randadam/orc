@@ -168,7 +168,86 @@ lifecycle rules. The devcontainer is the preferred input, not a requirement.
 
 ---
 
-## 6. Build pipeline
+## 6. Package requests
+
+An agent will discover mid-implementation that it needs something the environment does not have.
+Ideally that is caught in planning; sometimes it is not, and "the agent cannot install anything" must
+not mean "the agent gives up."
+
+### The risk is not what it first appears
+
+The instinct is that installing packages is dangerous because it executes untrusted code. But the
+agent **already has arbitrary code execution** in its sandbox — that is the assumption the whole
+isolation design starts from. An install grants no new execution capability.
+
+Two things it does grant, and they are the ones to design against:
+
+**It lands in the merged PR.** An agent-requested dependency ends up in the lockfile, in the diff,
+and eventually in the user's production build. That is a supply-chain decision being made by an LLM
+that may be acting on injected instructions. This is the serious risk, and it is not a sandbox
+problem at all.
+
+**It is a low-bandwidth egress channel.** The package name is attacker-influenced text that causes a
+fetch to leave the network. `npm install evil-<encoded-data>` is a known exfiltration pattern, and
+dependency confusion is its cousin. The damage is bounded here — the sandbox holds no credentials by
+construction, so there is nothing high-value to encode — but the channel is real and gets rate
+limited and audited rather than ignored.
+
+### A package request is a code change
+
+So it is handled the way a real team handles "I need to add a dependency": not as a runtime event,
+but as a proposed change that goes through review.
+
+```ts
+// available to any agent; a request, not an installation
+orc_request_package({
+  ecosystem: "npm",
+  name: "zod",
+  version: "^3.23",
+  justification: "Slice needs runtime schema validation at the API boundary",
+})
+```
+
+The request is **data leaving the sandbox, never a command executed inside it.** Resolution happens
+outside:
+
+1. **Policy check.** `orc.config.ts` declares the ecosystems and registries allowed, and whether
+   requests auto-approve. A request outside policy is refused with a reason the agent can read.
+2. **Approval.** Auto-approve from an allowlist, or the principal decides, or a human does. The POC
+   escalates to a human — consistent with every other unresolved decision (plan.md D4).
+3. **Fetch, outside the sandbox.** The broker retrieves the artifact. The agent's container never
+   gains a socket.
+4. **Install offline, inside.** The runner installs from the local artifact with the index disabled
+   (`npm install --offline`, `pip install --no-index --find-links`). Fetch and execute stay
+   separated: the network step happens where there is network, the execution step happens where the
+   blast radius is already accepted. Install scripts are disabled by default (`--ignore-scripts`)
+   and enabling them is a policy decision.
+5. **Write it back.** The manifest and lockfile change is part of the slice's diff, and
+   `.devcontainer/` changes if a system package was needed. The principal reviews it with the rest of
+   the code, which is the actual control — a human or a strong model reads "this slice added a
+   dependency" before it merges.
+
+Step 5 is the point. A dependency that exists only in a running container is both unreproducible and
+unreviewed; one that lands in the lockfile is neither.
+
+### Two tiers, by cost
+
+**Planned (cheap, preferred).** The slice spec declares expected new dependencies during feasibility.
+The environment is rebuilt once, before implementation starts, batched across slices. No restart, no
+stall, and the principal reviews the dependency list as part of approving the spec.
+
+**Unplanned (the escape hatch).** Mid-implementation, `orc_request_package` fires. Language-level
+packages resolve in place — fetch, offline install, continue in the same session. System packages
+(apt, and anything else needing image layers) cannot be installed live: they require a rebuild and a
+sandbox restart, which reuses the machinery already required for crash resume ([poc.md](poc.md) §8,
+criterion 4). The workspace and the Pi session persist; the agent resumes with the new environment.
+
+The planning path exists because the unplanned one costs minutes. Making the senior declare
+dependencies during feasibility is worth doing even though the escape hatch exists.
+
+---
+
+## 7. Build pipeline
 
 ```bash
 devcontainer build --workspace-folder <repo> --image-name <registry>/<repo>:<sha> --push
@@ -187,7 +266,7 @@ pull-through cache and lazy loading are the v1 answers if it bites.
 
 ---
 
-## 7. In the POC
+## 8. In the POC
 
 S0–S2 target a single repository, so this can be as simple as running `devcontainer build` once by
 hand and pointing the runner at the resulting digest. The allowlist filter, the compose translation
@@ -199,7 +278,7 @@ properties are what the rest depends on, and none of them require the full imple
 
 ---
 
-## 8. Open items
+## 9. Open items
 
 1. **Repos whose `postCreateCommand` cannot run at build.** The fallback is a documented failure
    telling the repo to move work into `onCreateCommand`. How common this is in practice is unknown.
@@ -209,3 +288,10 @@ properties are what the rest depends on, and none of them require the full imple
    M4).
 4. **Non-Docker devcontainers.** The spec permits other orchestrators; orc assumes OCI images. Fine
    for now, worth not designing against.
+5. **Does an environment change invalidate memoized steps?** A rebuild produces a new image digest.
+   Completed artifacts are facts about what happened and should not be discarded, but new work should
+   use the new environment — and whether a *re-run* of a step should key on the digest is unresolved.
+   Keying implementation steps on it and planning steps not on it is the likely answer; it needs a
+   real case before being fixed in code.
+6. **Request rate and batching.** If every slice triggers a rebuild, the run stalls on image builds.
+   Batching across concurrently-ready slices is the obvious mitigation, unmeasured so far.

@@ -493,6 +493,10 @@ Two consequences worth stating here rather than burying:
 - **Compose services become sidecars in the agent's network namespace**, never a Docker socket the
   agent controls. An ECS task is a compose project, so this maps to Fargate without changing the
   isolation model.
+- **Agents can request packages the environment lacks**, as data resolved outside the sandbox rather
+  than an install performed inside it. The resulting manifest change lands in the diff and is
+  reviewed like any other code change — which is the real control, since the risk is what reaches
+  the user's production build, not sandbox escape.
 
 ## 9. Open questions
 

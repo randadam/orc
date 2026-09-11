@@ -195,6 +195,7 @@ credential.
 | `orc_cancel` | Abort an agent and release its sandbox. |
 | `orc_list` | Current fleet state: ids, roles, status, tokens spent, wall clock. |
 | `orc_artifact` | Read or write a run-scoped artifact in S3. The channel for passing large outputs between agents without stuffing them through the context window. |
+| `orc_request_package` | Request a dependency the environment lacks. Emits a *request* resolved outside the sandbox; the resulting manifest change lands in the slice's diff for review ([environments.md](environments.md) §6). Available to any agent, not just orchestrators — it is a capability, not orchestration. |
 
 `orc_spawn` and `orc_await` are separate on purpose. A single blocking `spawn_and_wait` reads more
 naturally but serializes the fleet — the split is what makes fan-out expressible.

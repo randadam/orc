@@ -123,6 +123,22 @@ Dependency ordering also happens to be a decent *proxy* for conflict avoidance, 
 designed as one: features that touch the same area tend to depend on each other, so they tend to
 land in sequence anyway. Imperfect, free, and enough.
 
+### Dependencies are declared in the spec, requested only as a fallback
+
+The slice spec declares any new packages the senior expects to need. The environment is rebuilt once
+before implementation, batched across the ready set, and the principal reviews the dependency list
+while approving the spec — the same review a human team gives "this needs a new library."
+
+Mid-implementation discovery is the escape hatch, not the plan: `orc_request_package` emits a
+*request*, which resolves outside the sandbox and lands in the slice's diff as a manifest and
+lockfile change. Language packages resolve in place; system packages need a rebuild and a sandbox
+restart, reusing the crash-resume machinery. Full design in
+[environments.md](environments.md) §6.
+
+The reason to declare them up front is cost: the fallback path stalls a slice for minutes, and a
+dependency chosen under time pressure by an agent mid-task gets less scrutiny than one proposed
+during planning.
+
 ### Subslices share one tree, sequentially
 
 When a senior fans out to subagents, those subagents work in the **senior's workspace, one at a
@@ -484,9 +500,13 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
 
       // The spec is a lossy handoff written by the agent about to clear its context.
       // The principal is already in this conversation; make it sign off before work starts.
-      const ok = await principal().ask(`Is this spec sufficient to implement from, alone?\n${fmt(spec)}`,
-                                       { schema: Approval });
+      // spec.dependencies is reviewed here too — a new package is a code change (environments.md §6).
+      const ok = await principal().ask(`Is this spec sufficient to implement from, alone?\n` +
+                                       `${fmt(spec)}`, { schema: Approval });
       if (!ok.approved) return orc.escalate(`Slice ${slice.id} spec rejected`, { spec, ok });
+
+      // Batched rebuild before implementation; a no-op when nothing new was declared.
+      await ctx.prepareEnvironment(spec.dependencies);
 
       // Implementation starts from the written spec, not the negotiation transcript.
       const impl = await orc.agent("senior").session({
