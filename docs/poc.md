@@ -9,6 +9,8 @@ rather than a rewrite.
 
 **Target: ~4 weeks, single developer, nothing on AWS.**
 
+The workflow this builds toward is [poc-v2.md](poc-v2.md) — start there for what v1 is a skeleton of.
+
 ---
 
 ## 1. What the POC must prove

@@ -38,6 +38,7 @@ orc run ship-feature # run it on AWS
 | [docs/plan.md](docs/plan.md) | The development plan: architecture, components, milestones, risks |
 | [docs/proxy-design.md](docs/proxy-design.md) | The broker — sentinel credentials, egress policy, threat model |
 | [docs/plugin-api.md](docs/plugin-api.md) | Writing orchestration plugins, the SDK surface, `orc.config.ts` |
-| [docs/poc.md](docs/poc.md) | The proof-of-concept: what's in, what's deliberately deferred |
+| [docs/poc.md](docs/poc.md) | POC v1: what's in, what's deliberately deferred |
+| [docs/poc-v2.md](docs/poc-v2.md) | POC v2: the feature-delivery workflow, scheduling, gates |
 
 Status: **design phase.** Nothing is implemented yet. `docs/plan.md` is the thing to read first.
