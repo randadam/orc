@@ -101,7 +101,7 @@ the agent plane reaches the internet except through the broker.**
 | `orc-runner` | TypeScript | inside each sandbox | Supervises `pi` over RPC, bridges orchestration tools to `orcd`, streams events |
 | `@orc/pi` | TypeScript | inside each sandbox | The Pi package: provider override, orchestration tools, `tool_call` policy gate |
 | `@orc/plugin-sdk` | TypeScript | developer's repo | Types + helpers for writing orchestration plugins; `defineWorkflow` for code-driven runs |
-| `pi-kit` image | Dockerfile | ECR | Base sandbox image: pi, runner, toolchains, internal CA |
+| sandbox image | `devcontainer build` + derived layer | ECR | Repo's own `.devcontainer/` plus pi, runner, internal CA ([environments.md](environments.md)) |
 | `infra` | AWS CDK (TS) | — | VPC, ECS, DynamoDB, S3, Secrets Manager, IAM, observability |
 
 Go for the broker is a deliberate exception to an otherwise TypeScript stack: it is a long-lived,
@@ -148,7 +148,9 @@ Each agent gets an **ECS Fargate task** in `awsvpc` mode:
   simply does not exist. The security group permits egress to exactly two destinations: the
   broker's internal NLB and `orcd`'s internal NLB.
 - **Read-only root filesystem** with writable tmpfs at `/workspace` and `/tmp`.
-- **No Docker socket.** Agents that need containers get a nested, rootless runtime, or are denied.
+- **No Docker socket.** Compose services from the repo's devcontainer run as sidecars in the same
+  network namespace, started by the runner — the agent reaches them on `localhost` and holds no
+  Docker access ([environments.md](environments.md) §4).
 
 Fargate over EC2/Firecracker for v1: per-task IAM and per-task ENIs are exactly the primitives the
 isolation model needs, with no node fleet to manage. Its cost is cold start (~30–60s). Milestone 4
@@ -286,7 +288,7 @@ import { defineConfig, role } from "@orc/sdk";
 export default defineConfig({
   roles: {
     backend: role({
-      image: "ghcr.io/acme/pi-kit-node:20",
+      // image defaults to the repo's built devcontainer digest; override only to differ
       model: { provider: "bedrock", id: "anthropic.claude-opus-4-5" },
       tools: { allow: ["read", "write", "edit", "bash", "orc_*"], deny: ["web_fetch"] },
       egress: ["github.com", "registry.npmjs.org", "*.amazonaws.com"],
@@ -380,7 +382,7 @@ adapters — only if the runner's RPC bridge proves genuinely harness-agnostic.
 
 | Risk | Assessment | Response |
 | --- | --- | --- |
-| **Pi is a fast-moving upstream; extension APIs shift** | Likely | Pin exact versions in `pi-kit`. Keep our Pi surface area narrow (registerTool, registerProvider, `tool_call`, RPC) and behind an adapter in `@orc/pi`. Contract-test against upstream weekly in CI. |
+| **Pi is a fast-moving upstream; extension APIs shift** | Likely | Pin exact versions in the derived image layer. Keep our Pi surface area narrow (registerTool, registerProvider, `tool_call`, RPC) and behind an adapter in `@orc/pi`. Contract-test against upstream weekly in CI. |
 | **Prompt injection drives an agent to abuse its *allowed* capabilities** | Certain to be attempted | Out of scope for prevention, by Pi's own honest admission. Contain it: narrow allowlists, per-role least privilege, human approval gates on irreversible actions (push to default branch, deploy), full audit. |
 | **Sentinel leaks to an attacker outside the VPC** | Possible | It is worthless there: the broker is not internet-reachable, sentinels are run-bound with short TTL, and validation checks source. Rotate per run. |
 | **TLS-intercepting egress proxy breaks tooling (pinned certs, mTLS upstreams)** | Likely in practice | Support CONNECT-passthrough for allowlisted hosts that must not be intercepted — policy decision per host, logged. Accept that no-inspection hosts get host-level allowlisting only. |
@@ -470,6 +472,27 @@ slice, unresolvable conflict and cycle escalates rather than failing silently or
 For phases that need a human *in* the conversation, `orc attach <agent>` runs `pi --session <path>`
 against that agent's live session, giving the real Pi TUI. No bespoke chat UI. Pi's
 `extension_ui_request` over RPC is the path to routing prompts elsewhere later.
+
+### D5 — Environments come from the repo's dev container (decided)
+
+The sandbox image is built from the repository's own `.devcontainer/`, outside the sandbox, and the
+sandbox installs nothing. Full design in [environments.md](environments.md).
+
+An orc-owned image hand-built per target repo works for exactly one repo and puts orc permanently in
+the business of knowing toolchains. The [Dev Container spec](https://containers.dev) already holds
+that knowledge, usually written by whoever maintains the build, and its prebuild boundary
+(`onCreateCommand` / `updateContentCommand` run at build; the container start does not) is exactly
+the boundary the no-egress property needs.
+
+Two consequences worth stating here rather than burying:
+
+- **`devcontainer.json` is untrusted repository input**, not configuration we author. It is filtered
+  through an allowlist at policy-resolution time and folded into the policy hash. `initializeCommand`
+  is rejected unconditionally — it runs on the *host*, which here is the control plane holding the
+  credentials.
+- **Compose services become sidecars in the agent's network namespace**, never a Docker socket the
+  agent controls. An ECS task is a compose project, so this maps to Fargate without changing the
+  isolation model.
 
 ## 9. Open questions
 

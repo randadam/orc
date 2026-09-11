@@ -279,7 +279,8 @@ const readOnly = { allow: ["read", "grep", "orc_*"], deny: ["write", "edit", "ba
 
 export default defineConfig({
   defaults: {
-    image: "ghcr.io/acme/pi-kit-node:20",
+    // Environment comes from the repo's .devcontainer/, built outside the sandbox.
+    // Set `image` only to pin something different for a role.
     model: { provider: "bedrock", id: "anthropic.claude-opus-4-5" },
     timeout: "20m",
   },

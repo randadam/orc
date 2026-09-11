@@ -42,7 +42,7 @@ Anything not in service of these four is out.
 | Broker: sentinel mint/validate/substitute, single upstream | Claim 3 — the core property |
 | `defineWorkflow` + `agent().session()/run()/ask()`, `parallel()` | Claim 4 |
 | Local Docker sandbox, one container per agent, no network but the broker | Claim 3 needs real isolation |
-| A pre-baked image carrying the target repo's dependencies | The no-network property is only honest if nothing needs to install (§3) |
+| Sandbox image built from the repo's `.devcontainer/`, outside the sandbox | The no-network property is only honest if nothing needs to install (§3) |
 | Fresh clone per agent (D1), done by the runner | Cheap, and already decided |
 | Two roles with different tool policy | Proves per-role enforcement is real |
 | `ctx.verify()` — runner-executed commands, results the model cannot author | Every "green" in every gate depends on it |
@@ -53,23 +53,27 @@ That's it. Roughly: a broker, a runner, an extension, an SDK, and one example wo
 
 ---
 
-## 3. Dependencies: one pre-baked repo, so no-network stays honest
+## 3. Dependencies: the repo's dev container, built outside the sandbox
 
 Two requirements collide: the sandbox has **no network except the broker**, and agents must **run
 the repo's test suite**. A test suite needs its dependencies, and `npm install` needs a registry.
 
-Three resolutions exist. Allowing registry egress drags the CONNECT proxy — the hardest security
-component — into the POC, defeating the deferral. Vendoring dependencies into the workspace mount
-works but breaks whenever a lockfile changes. So:
+Allowing registry egress would drag the CONNECT proxy — the hardest security component — into the
+POC and defeat its deferral. The resolution is to move every network-dependent step to build time,
+outside the sandbox:
 
-**The POC targets a single repository, and its dependencies are baked into the sandbox image.**
-`images/pi-kit/` installs the target repo's toolchain and dependency tree at build time. Nothing
-needs to reach a registry at run time, so "no network but the broker" stays literally true — and
-that property is claim 3, the entire thesis. The moment a second target repo is wanted, the egress
-gateway has been earned.
+**The sandbox image is built from the target repository's `.devcontainer/`**, with dependency
+installation happening during the build (`onCreateCommand`, `updateContentCommand`, and
+`postCreateCommand` run at build with services up). By the time an agent starts, everything it needs
+is already in the image, so "no network but the broker" stays literally true — and that property is
+claim 3, the entire thesis.
 
-This makes the POC repo-specific, which is the correct trade at this stage and should be stated
-plainly rather than discovered later.
+Full design, including the untrusted-config allowlist and the compose-to-sidecar translation, is in
+[environments.md](environments.md). For S0–S2 this is as simple as running `devcontainer build` once
+by hand and pointing the runner at the resulting digest; the filtering and cache keying are S3 work.
+
+The POC still targets a **single repository** — but now because we have only picked one, not because
+the design is repo-specific. Adding a second is a build, not a redesign.
 
 ### The threat model goes live here
 
@@ -148,7 +152,7 @@ packages/
   orc-runner/     spawns pi --mode rpc, bridges RPC <-> control, clones workspace
   orc-broker/     sentinel mint/validate/substitute, one upstream, token logging
   orc-cli/        `orc run` — evaluates config, starts broker + sandboxes, runs workflow
-images/pi-kit/    Dockerfile: pinned pi, node, git, runner
+images/           derived image: repo devcontainer + pinned pi + runner + CA
 examples/ship-feature/
 ```
 
