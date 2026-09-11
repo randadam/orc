@@ -81,6 +81,11 @@ A slice is **ready** when every `dependsOn` is merged. That is the whole rule. I
 
 Cycles are rejected before scheduling (`orc.assertAcyclic`). An LLM will emit one eventually.
 
+Concurrency is capped (`maxConcurrency`, default low). A ready set of ten slices would otherwise
+start ten sandboxes at once, which is neither affordable nor what a laptop wants. A crude turn cap
+per run and per agent guards against runaway loops during development — spend enforcement proper
+belongs to the broker at v1, but a hard stop costs twenty lines and prevents an expensive night.
+
 ### Dependencies are capability-level, not file-level
 
 A dependency means *this work cannot begin until that capability exists* — "phone-based auth cannot
@@ -117,6 +122,19 @@ trunk. On conflict:
 Dependency ordering also happens to be a decent *proxy* for conflict avoidance, without being
 designed as one: features that touch the same area tend to depend on each other, so they tend to
 land in sequence anyway. Imperfect, free, and enough.
+
+### Subslices share one tree, sequentially
+
+When a senior fans out to subagents, those subagents work in the **senior's workspace, one at a
+time** — not in separate clones merged back.
+
+Parallel subagents on separate clones would recreate the merge problem *inside* a slice, where
+there is no PR boundary to catch it: no review, no integration step, no author to resolve. Parallel
+subagents on one shared tree is worse still — concurrent writers with nothing between them.
+
+Subslices are small and exist to save context, not wall-clock. Running them sequentially against the
+senior's tree keeps the slice a single coherent unit of work with exactly one integration point.
+If subslice throughput ever matters, the answer is more slices, not nested parallelism.
 
 ### What this costs versus a human team
 
@@ -173,7 +191,32 @@ seam that becomes durable execution later.
 
 ---
 
-## 4. Gates that produce signal
+## 4. Verification the model cannot author
+
+"Green" must be a fact, not a claim. If an agent runs the tests and *reports* the result, an LLM can
+report green on a red suite — and since every gate in this workflow rests on some notion of green,
+that one weakness would hollow out all of them.
+
+So verification is a **runner-executed primitive**. The agent may request it and read the result; it
+cannot produce the result:
+
+```ts
+const tests = await ctx.verify("slice-tests", { cmd: baseline.testCmd });
+// → { exitCode, stdout, stderr, durationMs, sha }   written by the runner, outside the model
+```
+
+The returned artifact is signed into the run record by the runner. An agent asked "are the tests
+green?" answers by reading a `verify` artifact, and a gate that cannot point at one does not pass.
+This also makes the whole run auditable after the fact: every green in the record traces to a
+command, an exit code, and the tree it ran against.
+
+**The command comes from prevalidation.** Test invocation is repo-specific (`npm test`, `make check`,
+`pytest -q`). Phase 0 already runs the suite to establish the baseline, so it discovers and pins
+`testCmd` into the baseline artifact, and everything downstream uses that rather than guessing.
+
+---
+
+## 5. Gates that produce signal
 
 Three rules, applied to every review and sign-off.
 
@@ -206,12 +249,14 @@ unresolvable disagreement.
 | QA sign-off | coverage report against the E2E plan |
 | Ops sign-off | named metrics found in the diff (grep/AST), runbook sections present |
 
-If a gate cannot be tied to a command, it is advisory and does not gate. Three gates that always
-pass are worse than no gates, because they look like assurance.
+Each row is a `verify` artifact (§4) produced by the runner, which is what makes the evidence
+unforgeable rather than merely requested. If a gate cannot be tied to such an artifact, it is
+advisory and does not gate. Three gates that always pass are worse than no gates, because they look
+like assurance.
 
 ---
 
-## 5. Escalation
+## 6. Escalation
 
 One mechanism, used everywhere: `orc.escalate(reason, context)` suspends the run, surfaces the
 question, and records the answer as an artifact.
@@ -226,7 +271,7 @@ The human's options are `abort`, `proceed` (with the decision recorded as docume
 
 ---
 
-## 6. The interactive phase
+## 7. The interactive phase
 
 The PM phase needs a human. It does not need a UI:
 
@@ -244,7 +289,7 @@ checkpointing matters before this ever runs on Fargate.
 
 ---
 
-## 7. Roles
+## 8. Roles
 
 | Role | Reviews | Authors | Writes code | Model tier |
 | --- | --- | --- | --- | --- |
@@ -261,13 +306,33 @@ Note the split: **architect and security review the plan; QA and ops author arti
 stage.** An author should not also gate the loop that produces their input — that is how review
 loops oscillate.
 
+### The principal is a role, not a session
+
+Tempting to give the principal one long-lived session spanning the whole run: it reviews the plan,
+arbitrates up to five rounds, plans the slices, negotiates feasibility with every senior, and reviews
+every merged diff. For a five-slice feature that is thirty-plus turns carrying full diffs.
+
+Two things break. It hits compaction, which is lossy, so the principal silently forgets its own
+earlier arbitration rationale — the record says one thing and the agent believes another. And it
+contradicts the principle the whole design rests on: if artifacts are the currency between phases,
+the principal should not *need* a continuous session.
+
+So the principal gets a **fresh session per phase**, hydrated from the artifacts it needs (the plan,
+the arbitration record, the slice spec). Each diff review is a clean session with the slice spec as
+context. It costs prompt tokens and buys determinism, resumability, and steps that are actually
+memoizable — a long-lived session is not a cacheable unit of work.
+
+The same reasoning applies to every role except two: the PM, which is a genuine human conversation,
+and the slice senior, which keeps its implementation session precisely so it can resolve its own
+merge conflicts later.
+
 The light-tier sub-agent is the riskiest choice here. Small models are exactly where tool-calling
 reliability degrades, and these agents edit files under strict schemas. Prove one weak-model agent
 can complete one trivial subslice before building the tier out.
 
 ---
 
-## 8. Staging
+## 9. Staging
 
 The full workflow is not the first runnable thing. Each stage runs end to end.
 
@@ -290,26 +355,37 @@ least one genuine merge conflict resolved without human help.
 **S4 — fan-out and sign-offs.** Subslices on the light tier, QA and ops evidence-based gates, final
 artifact assembly.
 
+**S4 is where a second model first appears.** Everything before it runs on one pinned model, which
+keeps [poc.md](poc.md)'s model-catalog seam closed. Introducing the light tier here means the first
+question S4 answers is whether a weak model can complete one trivial subslice at all — before any
+design depends on the answer. If it cannot, subslices run on the same model as their senior and the
+tier quietly disappears; nothing else in the workflow changes.
+
 ---
 
-## 9. Open items
+## 10. Open items
+
+Empirical, not architectural — each needs a real run to answer, and none blocks starting.
 
 1. **Slice granularity has no defined target.** "Independently workable" is not a size. Too large
    and the senior's context overflows; too small and coordination dominates. With no file-level
    scoping, granularity and dependency structure are the *only* levers on conflict rate, which
    raises the stakes on getting it right. Needs a stated heuristic and tuning against real runs.
-2. **Re-verify cost after each merge.** Running the full suite per merge serializes the tail of the
+2. **Conflict rate is unknown.** Concurrent slices may touch the same files often enough that the
+   resolve-and-reverify tail dominates the run. Measure before optimizing; if it bites, the lever is
+   slice granularity, not filesystem partitioning.
+3. **Re-verify cost after each merge.** Running the full suite per merge serializes the tail of the
    run. Affordable for small repos; needs affected-test selection for large ones.
-3. **No rollback of a bad merge.** If a merge passes review but breaks a later slice, the recovery
-   path is unspecified — currently escalation.
-6. **Conflict rate is unknown.** Concurrent slices may touch the same files often enough that the
-   resolve-and-reverify tail dominates the run. Measure it before optimizing; if it bites, the lever
-   is slice granularity, not filesystem partitioning.
-4. **The PRD loop may converge on agreement rather than quality.** Reviewers that see the previous
-   round's rejections may simply stop objecting. Worth checking whether round 5 findings are
-   substantively weaker than round 1, or just fewer.
-5. **Cost per run is unmeasured and probably large.** 60–100+ agent turns. Recorded-fixture mode is
-   not optional for iterating on this.
+4. **No rollback of a bad merge.** If a merge passes review but breaks a later slice, the recovery
+   path is escalation and nothing more. A `git revert` of the offending merge is the obvious
+   mechanism; whether the run can continue afterwards is unspecified.
+5. **The PRD loop may converge on agreement rather than quality.** Reviewers that see the previous
+   round's rejections may simply stop objecting. Worth checking whether round-5 findings are
+   substantively weaker than round-1 findings, or merely fewer.
+6. **Cost per run is unmeasured and probably large.** 60–100+ agent turns. Recorded-fixture mode is
+   not optional for iterating on this, and the turn caps (§2) are a floor, not a budget.
+7. **Which repository is the POC target.** The one genuinely blocking unknown: it determines the
+   pre-baked image, the toolchain, and `testCmd` ([poc.md](poc.md) §3).
 
 ---
 
@@ -325,8 +401,11 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
   feature: string; repo: string;
 }) => {
   // 0 — prevalidate. A red baseline makes every later "green" meaningless.
-  const base = await orc.step("baseline", { schema: Baseline }, () =>
-    orc.agent("ops").run("Run the suite. Report exit code and summary.", { evidence: true }));
+  const base = await orc.step("baseline", { schema: Baseline }, async () => {
+    const cmd = await orc.agent("ops").ask("Identify this repo's test command.", { schema: TestCmd });
+    const run = await orc.verify("baseline", { cmd: cmd.value });   // runner executes, not the model
+    return { testCmd: cmd.value, green: run.exitCode === 0, run };
+  });
   if (!base.green) return orc.escalate("Baseline is not green", base);
 
   // 1 — PRD, with a human in the loop via `orc attach pm`.
@@ -339,9 +418,10 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
   }, () => pm.awaitResult({ schema: PRD }));
 
   // 2 — plan, reviewed under severity, arbitrated by the principal.
-  const principal = await orc.agent("principal").session();
+  // The principal is a role, not a session: each phase gets a fresh one, hydrated from artifacts.
+  const principal = () => orc.agent("principal");
   let plan = await orc.step("plan:0", { schema: Plan }, () =>
-    principal.ask(`Plan the implementation of:\n${prd.md}`, { schema: Plan }));
+    principal().ask(`Plan the implementation of:\n${prd.md}`, { schema: Plan }));
 
   for (let round = 1; ; round++) {
     const findings = (await orc.parallel([
@@ -360,8 +440,9 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
 
     // The principal decides — reviewers advise. Rejections carry rationale.
     const arb = await orc.step(`arbitrate:${round}`, { schema: Arbitration }, () =>
-      principal.ask(`Accept or reject each finding with rationale:\n${fmt(findings)}`,
-                    { schema: Arbitration }));
+      principal().ask(`Plan:\n${plan.md}\n\nAccept or reject each finding with rationale:\n` +
+                      `${fmt(findings)}\n\nPrior rounds:\n${fmt(priorArbitrations)}`,
+                      { schema: Arbitration }));
     plan = arb.revisedPlan;
   }
 
@@ -376,13 +457,15 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
 
   // 3 — slice graph: capability-level edges, not lanes and not file scopes.
   const slices = await orc.step("slices", { schema: SliceGraph }, () =>
-    principal.ask(`Decompose into slices. Declare capability-level dependsOn for each.`,
+    principal().ask(`Plan:\n${plan.md}\n\nDecompose into slices. ` +
+                    `Declare capability-level dependsOn for each.`,
                   { schema: SliceGraph }));
   orc.assertAcyclic(slices);
 
   // 4 — schedule. Ready = all deps merged. Conflicts are resolved at integration, not prevented.
   const built = await orc.schedule(slices, {
     dependsOn: (s) => s.dependsOn,        // capability-level; no file scoping
+    maxConcurrency: 3,                    // a ready set of ten should not start ten sandboxes
 
     run: async (slice, ctx) => {
       // Full tree, writable. An agent that hits an unforeseen problem must be able to fix it.
@@ -394,23 +477,38 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
       let spec = await senior.ask(`Assess feasibility:\n${fmt(slice)}`, { schema: SliceSpec });
       for (let i = 1; !spec.agreed; i++) {
         if (i >= 3) return orc.escalate(`Slice ${slice.id} feasibility stalled`, { spec });
-        const reply = await principal.ask(`Senior raised:\n${spec.concerns}`, { schema: Reply });
+        const reply = await principal().ask(`Slice:\n${fmt(slice)}\nSenior raised:\n${spec.concerns}`,
+                                            { schema: Reply });
         spec = await senior.ask(`Principal says:\n${reply.md}`, { schema: SliceSpec });
       }
+
+      // The spec is a lossy handoff written by the agent about to clear its context.
+      // The principal is already in this conversation; make it sign off before work starts.
+      const ok = await principal().ask(`Is this spec sufficient to implement from, alone?\n${fmt(spec)}`,
+                                       { schema: Approval });
+      if (!ok.approved) return orc.escalate(`Slice ${slice.id} spec rejected`, { spec, ok });
 
       // Implementation starts from the written spec, not the negotiation transcript.
       const impl = await orc.agent("senior").session({
         workspace: { base: ctx.mergedHead },
       });
 
-      const work = spec.subslices?.length
-        ? await orc.parallel(spec.subslices.map((ss) => () =>
-            orc.agent("subagent").run(ss.prompt, { acceptance: ss.acceptance })))
-        : [await impl.run(spec.prompt, { acceptance: slice.acceptance })];
+      // Subslices run sequentially in the senior's tree — no nested merge, one integration point.
+      if (spec.subslices?.length) {
+        for (const ss of spec.subslices) {
+          await orc.agent("subagent").run(ss.prompt, {
+            acceptance: ss.acceptance, workspace: impl.workspace,
+          });
+        }
+      } else {
+        await impl.run(spec.prompt, { acceptance: slice.acceptance });
+      }
 
-      // Green means an exit code, not an opinion.
-      const tests = await impl.run("Run this slice's tests until green.", { evidence: true });
-      if (!tests.green) return orc.escalate(`Slice ${slice.id} could not reach green`, { tests });
+      // Green is an exit code produced by the runner, not a claim produced by the model.
+      const tests = await orc.verify(`slice:${slice.id}`, { cmd: base.testCmd, cwd: impl.workspace });
+      if (tests.exitCode !== 0) {
+        return orc.escalate(`Slice ${slice.id} could not reach green`, { tests });
+      }
 
       // Merge is serialized. The base has moved; the author resolves, then we re-verify.
       const merged = await ctx.integrate(slice, {
@@ -419,7 +517,8 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
       });
       if (!merged.ok) return orc.escalate(`Slice ${slice.id} could not integrate`, merged);
 
-      const review = await principal.ask(`Review merged diff:\n${merged.diff}`, { schema: Review });
+      const review = await principal().ask(`Spec:\n${fmt(spec)}\n\nReview merged diff:\n` +
+                                           `${merged.diff}`, { schema: Review });
       if (!review.approved) return orc.escalate(`Slice ${slice.id} rejected`, { review });
       return ctx.land(slice, merged);
     },
@@ -430,14 +529,18 @@ export default defineWorkflow("feature-delivery", async (orc, input: {
   }
 
   // 5, 6 — evidence-based sign-offs.
+  const coverage = await orc.verify("coverage", { cmd: base.coverageCmd });
   const qa = await orc.step("qa-signoff", { schema: SignOff }, () =>
-    orc.agent("qa").ask(`Verify coverage against the plan.`, { evidence: true }));
-  if (!qa.approved) return orc.escalate("QA withheld sign-off", qa);
+    orc.agent("qa").ask(`Coverage report:\n${coverage.stdout}\n\nPlan:\n${fmt(testPlan)}\n` +
+                        `Does coverage meet the plan? Cite the report.`, { schema: SignOff }));
+  if (!qa.approved) return orc.escalate("QA withheld sign-off", { qa, coverage });
 
+  const metrics = await orc.verify("metrics", { cmd: `grep -rn ${fmt(runbook.metricNames)} src/` });
   const ops = await orc.step("ops-signoff", { schema: SignOff }, () =>
-    orc.agent("ops").ask(`Confirm metrics exist in the diff and the runbook is complete.`,
-                         { evidence: true }));
-  if (!ops.approved) return orc.escalate("Ops withheld sign-off", ops);
+    orc.agent("ops").ask(`Metric search:\n${metrics.stdout}\n\nRunbook:\n${fmt(runbook)}\n` +
+                         `Are all named metrics present and the runbook complete?`,
+                         { schema: SignOff }));
+  if (!ops.approved) return orc.escalate("Ops withheld sign-off", { ops, metrics });
 
   return { prd, plan, testPlan, runbook: ops.runbook, metrics: ops.metrics, rollback: ops.rollback };
 });

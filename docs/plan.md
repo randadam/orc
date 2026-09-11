@@ -447,20 +447,41 @@ is rejected by the control plane.
 What stays out of config: conditions, loops, phases, steps, retries, DAGs. Config answers "what is
 this role allowed to do." Workflows answer "what happens, in what order, and when do we go back."
 
+### D3 — Code-driven orchestration is the default (decided)
+
+Workflows are TypeScript functions. The LLM-driven style — an orchestrator agent holding `orc_*`
+spawn/await tools and planning its own delegation — is deferred past the POC entirely.
+
+An LLM planning a fan-out of expensive agents is a reliability and cost risk worth taking only when
+the work is genuinely open-ended. Where an agent's judgement is needed mid-run, it returns
+*structured output* the workflow acts on (a senior returning `subslices: Slice[] | null`), rather
+than being handed a spawn tool. Same outcome, decision visible in the workflow rather than buried in
+a transcript, and no new capability surface.
+
+### D4 — Human-in-the-loop is escalation plus attach (decided)
+
+One mechanism for the human to intervene, one for the human to participate.
+
+`orc.escalate(reason, context)` suspends the run, surfaces the question, and records the answer as
+an artifact keyed to its step — so a resumed run does not re-ask. Options are `abort`, `proceed`
+(risk recorded), or `amend` (edit the artifact and resume from that step). Every loop cap, failed
+slice, unresolvable conflict and cycle escalates rather than failing silently or guessing.
+
+For phases that need a human *in* the conversation, `orc attach <agent>` runs `pi --session <path>`
+against that agent's live session, giving the real Pi TUI. No bespoke chat UI. Pi's
+`extension_ui_request` over RPC is the path to routing prompts elsewhere later.
+
 ## 9. Open questions
 
-These need answers before M2, and the first one changes the architecture:
+Two remain, plus one the POC needs immediately:
 
 1. **Model backend — Bedrock or direct API keys?** Bedrock + SigV4 in the broker removes long-lived
    model credentials from the system entirely and is the recommended default. Bedrock's catalog now
-   covers open-weight models as well as frontier ones (§3.4 of the proxy design), so this choice no
-   longer costs model selection. Direct keys remain for anything Bedrock doesn't carry.
+   covers open-weight models as well as frontier ones ([proxy-design.md](proxy-design.md) §3.4), so this
+   choice no longer costs model selection. Direct keys remain for anything Bedrock doesn't carry.
    *This decides the model gateway's design.*
-2. **Primary orchestration style — LLM-driven or code-driven?** Both are planned, but which is the
-   documented default shapes the SDK's ergonomics and the examples. Recommendation: code-driven
-   default, LLM-driven as the escape hatch.
-3. **What scale are we building for?** 10 concurrent agents and 100 concurrent agents are different
+2. **What scale are we building for?** 10 concurrent agents and 100 concurrent agents are different
    schedulers. Assumed: tens, single-digit concurrent runs.
-4. **Human-in-the-loop gates — where?** Pi's extension UI sub-protocol (`extension_ui_request` over
-   RPC) gives us a natural approval channel from inside a sandbox out to an operator. Worth wiring
-   in M4 if approval gates on irreversible actions are a requirement rather than a nicety.
+3. **Which repository is the POC target?** Blocking for the POC, not for the architecture. It
+   determines the sandbox image contents, the toolchain, and the test command — see [poc.md](poc.md)
+   §3, which pins the POC to a single pre-baked repo rather than pulling the egress gateway forward.

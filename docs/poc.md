@@ -42,15 +42,46 @@ Anything not in service of these four is out.
 | Broker: sentinel mint/validate/substitute, single upstream | Claim 3 — the core property |
 | `defineWorkflow` + `agent().session()/run()/ask()`, `parallel()` | Claim 4 |
 | Local Docker sandbox, one container per agent, no network but the broker | Claim 3 needs real isolation |
+| A pre-baked image carrying the target repo's dependencies | The no-network property is only honest if nothing needs to install (§3) |
 | Fresh clone per agent (D1), done by the runner | Cheap, and already decided |
 | Two roles with different tool policy | Proves per-role enforcement is real |
+| `ctx.verify()` — runner-executed commands, results the model cannot author | Every "green" in every gate depends on it |
+| Concurrency cap and a crude turn cap per run and per agent | A runaway loop during development is a real cost event |
 | Session JSONL persisted to a local directory | Needed for resume and for recorded tests |
 
 That's it. Roughly: a broker, a runner, an extension, an SDK, and one example workflow.
 
 ---
 
-## 3. What's deferred, and the seam that keeps it cheap
+## 3. Dependencies: one pre-baked repo, so no-network stays honest
+
+Two requirements collide: the sandbox has **no network except the broker**, and agents must **run
+the repo's test suite**. A test suite needs its dependencies, and `npm install` needs a registry.
+
+Three resolutions exist. Allowing registry egress drags the CONNECT proxy — the hardest security
+component — into the POC, defeating the deferral. Vendoring dependencies into the workspace mount
+works but breaks whenever a lockfile changes. So:
+
+**The POC targets a single repository, and its dependencies are baked into the sandbox image.**
+`images/pi-kit/` installs the target repo's toolchain and dependency tree at build time. Nothing
+needs to reach a registry at run time, so "no network but the broker" stays literally true — and
+that property is claim 3, the entire thesis. The moment a second target repo is wanted, the egress
+gateway has been earned.
+
+This makes the POC repo-specific, which is the correct trade at this stage and should be stated
+plainly rather than discovered later.
+
+### The threat model goes live here
+
+Running the target repo's test suite means **executing arbitrary code from that repository inside
+the sandbox** — the exact scenario the isolation design exists for. Up to this point the threat
+model is theoretical; from S2 onward it is exercised on every run. That is a feature: the credential
+isolation test (§8, criterion 2) runs against a sandbox that is genuinely executing untrusted code,
+not a synthetic one.
+
+---
+
+## 4. What's deferred, and the seam that keeps it cheap
 
 The rule: **every deferred decision gets exactly one seam, and a seam is a function signature with
 exactly one implementation.** Not a plugin system, not a registry, not a config surface. One
@@ -58,8 +89,8 @@ function you later write a second version of.
 
 | Deferred | POC does | Seam | Cost to adopt later |
 | --- | --- | --- | --- |
-| **Model catalog from broker** (§3.5 proxy) | One pinned model, descriptor hardcoded | `resolveModels(): Promise<Model[]>` in `@orc/pi`, returns a constant | Swap the body for a `fetch` to `/m/catalog`; it is already the argument to Pi's `refreshModels` hook |
-| **Inbound wire format choice** (§3.6 proxy) | `anthropic-messages` only | `ModelBackend` interface in the broker, one impl | Add a second impl; no call sites change |
+| **Model catalog from broker** ([proxy-design.md](proxy-design.md) §3.5) | One pinned model, descriptor hardcoded — the seam stays closed until v2 stage S4 introduces the light tier | `resolveModels(): Promise<Model[]>` in `@orc/pi`, returns a constant | Swap the body for a `fetch` to `/m/catalog`; it is already the argument to Pi's `refreshModels` hook |
+| **Inbound wire format choice** ([proxy-design.md](proxy-design.md) §3.6) | `anthropic-messages` only | `ModelBackend` interface in the broker, one impl | Add a second impl; no call sites change |
 | **AWS everything** | Local Docker via dockerode | `Sandbox` interface: `start/exec/stop/mount` | `FargateSandbox` alongside `LocalDockerSandbox` |
 | **DynamoDB + S3** | JSON files on local disk | `RunStore`, `SessionStore` interfaces | Second impl per interface |
 | **Egress gateway, MITM, credential injection** | Sandbox has *no* network except the broker; the runner clones the workspace and mounts it | none needed — it is additive | The CONNECT proxy is new code, not a change to existing code |
@@ -90,7 +121,7 @@ export default defineWorkflow("ship-feature", async (orc, input) => { /* ... */ 
 
 ---
 
-## 4. Deliberately *not* abstracted
+## 5. Deliberately *not* abstracted
 
 Seams have a cost, and the wrong ones are worse than none. These stay concrete in the POC:
 
@@ -108,7 +139,7 @@ Seams have a cost, and the wrong ones are worse than none. These stay concrete i
 
 ---
 
-## 5. Shape
+## 6. Shape
 
 ```
 packages/
@@ -127,7 +158,7 @@ Go at v1 is cheaper than running two toolchains now.
 
 ---
 
-## 6. Sequence
+## 7. Sequence
 
 **Week 0 — the spike that can kill the design.** Drive `pi --mode rpc` from a Node script. Register
 an extension that blocks a `bash` call from `tool_call`. Nothing else. If claim 2 fails, stop and
@@ -145,7 +176,7 @@ example, the isolation test suite, and the recorded-session test harness.
 
 ---
 
-## 7. Exit criteria
+## 8. Exit criteria
 
 The POC is done when:
 
@@ -162,7 +193,7 @@ needs comments explaining the orchestration API rather than the task, the API is
 
 ---
 
-## 8. What the POC will not tell us
+## 9. What the POC will not tell us
 
 Worth being honest about, so the results are not over-read:
 
