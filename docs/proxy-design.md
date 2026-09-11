@@ -115,14 +115,41 @@ broker's memory, in a rotation runbook. Amazon Bedrock removes it:
 
 1. Sandbox sends `anthropic-messages` format to the broker with a sentinel. Unchanged — Pi does not
    know or care what backend is behind the gateway.
-2. Broker validates, translates to the Bedrock InvokeModelWithResponseStream shape, and **signs with
+2. Broker validates, translates to the Bedrock **Converse / ConverseStream** API, and **signs with
    SigV4 using its own ECS task role**.
 3. IAM policy on that role is the authorization boundary: which models, which regions, and
    (via condition keys) under what constraints.
 
+Converse rather than per-model `InvokeModel` payloads, deliberately: Converse is model-agnostic and
+normalizes tool use across the whole catalog, so one translation (`anthropic-messages` → Converse)
+covers every model rather than one adapter per family. Pi's agent loop depends entirely on tool
+calling, and a uniform tool-call shape is what makes swapping models a config change.
+
 No model API key exists in the system at all. Rotation becomes an IAM concern. Per-run attribution
 lands in CloudTrail for free. **This is the recommended default**; direct-key support exists for
 models Bedrock doesn't carry, and it is the same code path with a different credential resolver.
+
+#### Open-weight models
+
+Choosing Bedrock does not narrow the model lineup. As of early 2026 the serverless catalog carries
+roughly two dozen managed open-weight models — Llama, Mistral (Ministral, Large 3, Magistral),
+DeepSeek V3.2, the Qwen3 family including Qwen3 Coder, OpenAI's gpt-oss, Gemma, Nemotron, and
+others — alongside the frontier models. Beyond that, Bedrock Marketplace deploys models to managed
+endpoints, and **Custom Model Import** runs your own weights serverlessly for supported
+architectures (Llama, Mistral, Qwen, gpt-oss), currently in `us-east-1`, `us-west-2`, and
+`eu-central-1`.
+
+All of it is reached through the same SigV4-signed Converse call, which means the credential-free
+property holds for open-weight models exactly as it does for frontier ones.
+
+The practical caveat is capability, not availability: **open-weight models vary widely in tool-calling
+reliability**, and an agent loop that mis-calls tools fails in expensive, hard-to-debug ways. This
+argues for a mixed fleet rather than a single model choice — a strong model for the orchestrator and
+architect roles, where a bad plan costs a whole fan-out, and cheaper open-weight models for narrow,
+well-specified worker roles. `orc.yaml` already sets `model` per role, so this is a policy decision
+per role and not an architectural one. Validate any open-weight model against the real tool schemas
+before trusting it in a worker role; the recorded-session test harness (plugin-api.md §7) is the
+cheap way to do that.
 
 ### 3.5 Budget enforcement
 

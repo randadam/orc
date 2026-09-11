@@ -388,21 +388,40 @@ adapters — only if the runner's RPC bridge proves genuinely harness-agnostic.
 - **A web UI.** CLI and API first. A UI is a client of the event stream, buildable later by anyone.
 - **Preventing prompt injection.** Containing its blast radius is the whole security posture.
 
-## 8. Open questions
+## 8. Decisions
 
-These need answers before M2, and two of them change the architecture:
+### D1 — Workspaces: fresh clone per agent (decided)
+
+Each agent gets its own workspace, materialized by the runner as a clone at a pinned ref through
+the broker's git path. No shared filesystem between agents in v1.
+
+This buys isolation for free: two agents cannot corrupt each other's working tree, a crashed
+sandbox takes nothing with it, and every agent's starting state is exactly reproducible from a ref.
+It costs clone time per agent — mitigated with a shared git cache in the image and `--depth`/partial
+clone for large repos, both cheap and local.
+
+The alternative, a shared EFS workspace, is faster to start and considerably harder to get right:
+concurrent writes to one tree need a coordination protocol, and agents that block on each other
+stop being independently schedulable. Revisit only if clone time measurably dominates run time,
+which for multi-minute agent tasks it will not.
+
+Fan-in happens through **artifacts and diffs**, not a shared tree — `orc_artifact` and the
+`inputs:` field on a run are the supported channels for moving work between agents.
+
+## 9. Open questions
+
+These need answers before M2, and the first one changes the architecture:
 
 1. **Model backend — Bedrock or direct API keys?** Bedrock + SigV4 in the broker removes long-lived
-   model credentials from the system entirely and is the recommended default. Direct keys are
-   needed if the model lineup we want isn't on Bedrock. *This decides the model gateway's design.*
+   model credentials from the system entirely and is the recommended default. Bedrock's catalog now
+   covers open-weight models as well as frontier ones (§3.4 of the proxy design), so this choice no
+   longer costs model selection. Direct keys remain for anything Bedrock doesn't carry.
+   *This decides the model gateway's design.*
 2. **Primary orchestration style — LLM-driven or code-driven?** Both are planned, but which is the
    documented default shapes the SDK's ergonomics and the examples. Recommendation: code-driven
    default, LLM-driven as the escape hatch.
-3. **Where do agents get their workspace?** Fresh clone per agent (isolated, slow, simple) versus a
-   shared EFS workspace with a coordination protocol (fast, contended, considerably harder).
-   Recommendation: fresh clone in v1, measure the pain before adding EFS.
-4. **What scale are we building for?** 10 concurrent agents and 100 concurrent agents are different
+3. **What scale are we building for?** 10 concurrent agents and 100 concurrent agents are different
    schedulers. Assumed: tens, single-digit concurrent runs.
-5. **Human-in-the-loop gates — where?** Pi's extension UI sub-protocol (`extension_ui_request` over
+4. **Human-in-the-loop gates — where?** Pi's extension UI sub-protocol (`extension_ui_request` over
    RPC) gives us a natural approval channel from inside a sandbox out to an operator. Worth wiring
    in M4 if approval gates on irreversible actions are a requirement rather than a nicety.
