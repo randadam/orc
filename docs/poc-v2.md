@@ -307,16 +307,17 @@ checkpointing matters before this ever runs on Fargate.
 
 ## 8. Roles
 
-| Role | Reviews | Authors | Writes code | Model tier |
+| Role | Reviews | Authors | Writes code | POC model |
 | --- | --- | --- | --- | --- |
-| PM | — | PRD | no | strong |
-| Principal | plan, PRs | slice graph, arbitration | merges only | strong |
-| Architect | plan | findings | no | strong |
-| Security | plan | findings | no | strong |
-| QA | E2E coverage | E2E test plan | tests only | mid |
-| Ops | deploy readiness | runbook, metrics, rollback | no | mid |
-| Senior | slice feasibility | slice spec, local tests | yes | strong |
-| Sub-agent | — | — | yes | light |
+| PM | — | PRD | no | `claude-sonnet-5` |
+| Principal | plan, PRs | slice graph, arbitration | merges only | `claude-sonnet-5` |
+| Architect | plan | findings | no | `claude-sonnet-5` |
+| Security | plan | findings | no | `claude-sonnet-5` |
+| QA | E2E coverage | E2E test plan | tests only | `claude-sonnet-5` |
+| Ops | deploy readiness | runbook, metrics, rollback | no | `claude-sonnet-5` |
+| Senior — feasibility | slice feasibility | slice spec | no | `claude-sonnet-5` |
+| Senior — implementation | — | local tests | yes | `claude-haiku-4-5` |
+| Sub-agent | — | — | yes | `claude-haiku-4-5` |
 
 Note the split: **architect and security review the plan; QA and ops author artifacts at that
 stage.** An author should not also gate the loop that produces their input — that is how review
@@ -324,53 +325,44 @@ loops oscillate.
 
 ### Concrete models for the POC
 
-Tiers above are roles, not commitments. For POC work the assignment is driven by one principle:
-**during a POC, model reliability is worth more than model price, because a flaky model makes your
-own bugs undiagnosable.** If a run fails, you need to know whether the scheduler is wrong or the
-model simply mis-called a tool. A cheap-but-unreliable model turns every bug into a coin flip.
+**Decided: `claude-haiku-4-5` for implementation, `claude-sonnet-5` for everything else.**
 
-So: **start with Claude Haiku 4.5 (`claude-haiku-4-5`) in every role.** It is the cheapest current
-Claude model at $1/$5 per MTok input/output, and it tool-calls reliably enough to keep the model a
-non-variable while the orchestration is under test. Upgrade a role to `claude-sonnet-5` ($2/$10) only
-when that role demonstrably fails at its job — most likely the senior (writing code) and the
-principal (reviewing diffs). Reach for `claude-opus-5` ($5/$25) only if plan *quality* is what
-blocks, which the POC is not really testing.
+The principle behind the line is not "cheap where volume is" — it is **cheap where the gate is
+objective, reliable where the output is only judged by another model.**
 
-Starting Haiku-everywhere has a second benefit: it answers the S4 light-tier question
-(can a weak model complete a subslice?) in stage S0, cheaply, instead of at the end.
+Implementation has an unforgeable success criterion: `orc.verify` returns an exit code the model
+cannot author (§4). A weak model that writes bad code is *caught* — the tests fail, the turn is
+retried, the turn cap bounds the damage. Planning and review have no such gate. A mediocre plan, a
+missed security finding, or a shallow arbitration is silently accepted and propagates into every
+slice downstream. Spend the model budget where nothing else can catch the mistake.
 
-**Watch the context window.** Haiku 4.5 is 200K where Sonnet 5 and Opus 5 are 1M. A principal
-reviewing a large merged diff is the likely first overflow — another reason the per-phase session
-design matters, since it keeps each review's context to one slice.
+That also happens to put the cheap model where the token volume is, since implementation dominates
+turn count and context size. A blended cached run lands around **$2–3**.
 
-### Cost, with real numbers
+**The senior runs at two tiers, in its two phases.** Feasibility negotiation and writing the slice
+spec are judgement work; implementing from that spec is execution against a test suite. The design
+already splits these into separate sessions — implementation starts from a cleared context, hydrated
+from the spec — so the same role is `claude-sonnet-5` while it reasons and `claude-haiku-4-5` while
+it builds, at no extra complexity.
 
-Per turn at a representative 50K input / 2K output, and for a 100-turn run:
+### The honest risk in this split
 
-| | $/turn uncached | $/turn cached | 100-turn run, cached |
-| --- | --- | --- | --- |
-| `claude-haiku-4-5` | $0.06 | $0.015 | **~$1.50** |
-| `claude-sonnet-5` | $0.12 | $0.03 | ~$3 |
-| `claude-opus-5` | $0.30 | $0.075 | ~$7.50 |
+Implementation is the **most tool-call-intensive role in the system** — read, write, edit, bash, in
+long iterative loops. If Haiku 4.5 is going to struggle anywhere, it is there, and the failure mode
+is burned turns rather than wrong output: retry loops that never reach green.
 
-"Cached" assumes cache reads at 0.1× the base input rate, with writes at 1.25× on the default
-5-minute TTL — so two requests sharing a prefix already break even.
+Three things make that acceptable rather than reckless. The failure is *visible* (tests stay red
+rather than passing wrongly), it is *bounded* (turn caps, §2), and the fix is *one line* — promoting
+the implementation session to `claude-sonnet-5` is a config change, not a redesign. If S2 shows the
+senior thrashing, that is the first knob to turn, and the measurement to take is turns-to-green
+rather than cost-per-turn.
 
-**Prompt caching is the largest single lever, and this workflow is unusually well suited to it.**
-The same PRD, plan and slice spec are resent across reviewer rounds and agents. That requires prompt
-*ordering discipline*: stable artifacts first, volatile content (the current round's findings, the
-latest diff) last, after the final cache breakpoint. Verify with
-`usage.cache_read_input_tokens` — if it is zero across repeated calls, something in the prefix is
-changing and the discount is silently not happening.
-
-Two smaller levers: thinking tokens bill as output, so run POC roles at `output_config.effort: "low"`
-on Sonnet/Opus (Haiku 4.5 does not accept `effort` — simply leave thinking off there); and the turn
-caps from §2 are the backstop against a loop that misbehaves overnight.
-
-**But the biggest savings are architectural, not model choice**, and they are already in the design:
-S0's stub roles cost nothing, recorded fixtures replay for free, and memoized steps mean debugging
-the merge phase does not re-run the PRD interview. A POC iterated mostly through stubs and fixtures
-spends single-digit dollars per *day*, whichever model is configured.
+One thing to watch: the implementation session also **resolves merge conflicts**, because it holds
+the context for why the code is as it is. That is judgement work landing on the cheap tier. It stays
+there for the POC because context matters more than raw capability here, and it is gated twice —
+tests re-run on the merged tree, and the principal reviews the resolved diff on Sonnet. If conflict
+resolution turns out to be where Haiku fails, the narrow fix is to escalate only conflicts to a
+Sonnet session hydrated from the spec.
 
 ### The principal is a role, not a session
 
@@ -421,11 +413,11 @@ least one genuine merge conflict resolved without human help.
 **S4 — fan-out and sign-offs.** Subslices on the light tier, QA and ops evidence-based gates, final
 artifact assembly.
 
-**S4 is where a second model first appears.** Everything before it runs on one pinned model, which
-keeps [poc.md](poc.md)'s model-catalog seam closed. Introducing the light tier here means the first
-question S4 answers is whether a weak model can complete one trivial subslice at all — before any
-design depends on the answer. If it cannot, subslices run on the same model as their senior and the
-tier quietly disappears; nothing else in the workflow changes.
+**Two models are in play from S2**, not S4 — the split in §8 puts `claude-haiku-4-5` on
+implementation and `claude-sonnet-5` everywhere else, so [poc.md](poc.md)'s model-catalog seam opens
+as soon as real implementation starts. That is a deliberate trade: it means the "can a weak model
+build?" question is answered at S2 with a whole slice, rather than at S4 with a subslice. S4 then
+only extends the tier already in use to sub-agents, which is a much smaller step.
 
 ---
 
@@ -448,10 +440,12 @@ Empirical, not architectural — each needs a real run to answer, and none block
 5. **The PRD loop may converge on agreement rather than quality.** Reviewers that see the previous
    round's rejections may simply stop objecting. Worth checking whether round-5 findings are
    substantively weaker than round-1 findings, or merely fewer.
-6. **Cost per run is estimated, not measured.** §8 puts a cached 100-turn run at roughly $1.50 on
-   Haiku and $7.50 on Opus, but that assumes a 50K-token average context and a cache that actually
-   hits. Real context growth across a long run is the unknown; measure `usage` from the first real
-   runs rather than trusting the estimate.
+6. **Cost per run is estimated, not measured.** §8 puts a blended cached run at roughly $2–3, but
+   that assumes a 50K-token average context and a cache that actually hits. Real context growth
+   across a long run is the unknown; measure `usage` from the first real runs rather than trusting
+   the estimate.
+8. **Can Haiku 4.5 carry implementation?** The split in §8 puts the cheap model on the most
+   tool-intensive role. The measurement that decides it is turns-to-green per slice, taken at S2.
 7. **Which repository is the POC target.** The one genuinely blocking unknown: it determines the
    pre-baked image, the toolchain, and `testCmd` ([poc.md](poc.md) §3).
 
