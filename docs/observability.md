@@ -207,17 +207,105 @@ configuration question (Haiku vs Sonnet for implementation) becomes answerable.
 
 ---
 
-## 7. Open items
+## 7. Quality: manual now, incidents later
+
+Nothing in §4 measures whether the output is any *good*. That is deliberate, and the resolution is
+staged.
+
+**Now: a human reads the artifacts.** Accepted, not deferred. The metrics say whether a
+configuration *finishes*; a person says whether the PRD, the runbook and the diff are worth having.
+An LLM judge over artifacts inherits every failure mode of LLM review gates
+([poc-v2.md](poc-v2.md) §5) — it would approve almost everything and produce a number that looks
+like quality without being it. A small human-rated sample is less scalable and more honest.
+
+So escalation count stays a *proxy*: a configuration that rarely escalates might be good, or might
+be failing where no gate looks. Pair it with a periodic read. The instrument does not replace
+judgement, and pretending otherwise is how you ship a confidently wrong comparison.
+
+**Later: attach incidents to the code that caused them.** The real measure of a change's quality is
+what happens after it ships — the same thing mature engineering organizations track as change
+failure rate. An incident (a page, a Sentry issue, a rollback, a revert) gets linked back to the
+merged commits that introduced it, and therefore back to the slice, the run, and the configuration
+that produced them.
+
+That is the honest quality metric, and it is also **lagging**: it arrives days or weeks after the run
+that earned it, unlike everything else here, which is known by the time the run ends.
+
+### What that requires now, cheaply
+
+The lagging join is nearly free if planned for and expensive to retrofit. Two properties, both worth
+having from S3:
+
+- **Run records outlive the run.** Not ephemeral telemetry scraped into a dashboard and aged out —
+  durable records, queryable months later.
+- **Every record carries the commit shas it produced.** A slice that merges records its merge commit;
+  a run records the set. That sha is the join key between "an incident happened" and "this
+  configuration wrote that code."
+
+With those two, incident attachment is later an ingestion path (webhook, or a manual
+`orc incident link <sha>`) plus a query. Without them, the data needed to answer the question was
+thrown away and no amount of later tooling recovers it.
+
+---
+
+## 8. Custom metrics
+
+Some of what users will want to measure is specific to their codebase, and orc should not try to
+anticipate it. The extension point reuses machinery that already exists rather than adding a
+mechanism.
+
+**A custom metric is a command plus a parse rule.** `verify` already runs commands outside the
+model's control and captures their output (§4 of [poc-v2.md](poc-v2.md)), so:
+
+```ts
+// orc.config.ts — declared, therefore part of the policy hash
+metrics: {
+  bundle_size_kb: { cmd: "pnpm build --json", parse: (out) => JSON.parse(out).totalKb },
+  eslint_warnings: { cmd: "pnpm lint --format json", parse: (out) => JSON.parse(out).length },
+}
+```
+
+These emit as `orc.custom.<name>` at slice and run scope, and — the part that makes them useful —
+**automatically carry `orc.config.hash`**, so a user's own metric is comparable across
+configurations on exactly the same footing as the built-ins.
+
+For anything not expressible as a command, workflows are TypeScript:
+
+```ts
+orc.metric("review_comment_count", review.findings.length, { slice: slice.id });
+```
+
+Three rules keep this from corrupting the comparison:
+
+- **Namespaced.** Custom metrics land under `orc.custom.*` and cannot shadow a built-in. A user
+  metric called `orc.run.cost_usd` would silently poison every comparison; the namespace makes that
+  impossible rather than discouraged.
+- **Emitted from trusted positions only** — the workflow engine or a declared command. Never from
+  inside an agent session, for the same reason as everything else in §3.
+- **Bounded cardinality.** User-chosen attributes are the easy way to make a metrics backend
+  unusable. Attribute keys are declared alongside the metric, and unbounded values (slice titles,
+  file paths, error strings) belong on spans, not metric attributes.
+
+### Out of scope: maintainability and technical debt
+
+orc does not attempt to measure these, and should not pretend to. They are unsolved for human teams
+too — every proxy (complexity scores, churn, coupling metrics) is contested, gameable, and weakly
+correlated with the thing it claims to measure. Agents change who writes the code, not whether the
+measurement problem is solved.
+
+What orc provides is the hook above, so a team with a proxy they actually trust can wire it in and
+compare configurations against it. That is the appropriate level of ambition: a good extension point
+instead of a bad built-in.
+
+---
+
+## 9. Open items
 
 1. **Cost attribution for cache writes.** A cache write costs 1.25×, and the run that pays it is not
    necessarily the run that benefits. Per-run cost is therefore slightly unfair across a sweep;
    whether that matters at these magnitudes is untested.
-2. **Escalation count is a proxy, not a measure, of quality.** A configuration that escalates rarely
-   might be good, or might be failing silently in ways no gate catches. Pair it with a periodic human
-   read of the output artifacts — the metric cannot replace that.
-3. **No quality metric for the artifacts themselves.** Nothing here scores whether the PRD is any
-   good or the runbook is usable. An LLM-judge over artifacts is the obvious idea and inherits every
-   problem of LLM review gates ([poc-v2.md](poc-v2.md) §5); a small human-rated sample is more
-   honest and does not scale. Unresolved.
-4. **GenAI conventions may drift** while in Development status. Pinned version plus `orc.*`-anchored
+2. **Incident ingestion has no design yet.** §7 fixes the two properties needed to make it possible
+   (durable records, commit shas), but the ingestion path, the incident model, and how blame is
+   attributed across several merged slices are all unspecified. Out of POC scope.
+3. **GenAI conventions may drift** while in Development status. Pinned version plus `orc.*`-anchored
    analysis is the mitigation, not a fix.

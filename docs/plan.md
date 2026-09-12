@@ -399,6 +399,9 @@ adapters — only if the runner's RPC bridge proves genuinely harness-agnostic.
   Multi-tenancy changes the isolation model substantially and should not be retrofitted casually.
 - **A web UI.** CLI and API first. A UI is a client of the event stream, buildable later by anyone.
 - **Preventing prompt injection.** Containing its blast radius is the whole security posture.
+- **Measuring maintainability or technical debt.** Unsolved for human teams; every proxy is
+  contested and gameable. orc ships a custom-metric hook instead of a bad built-in
+  ([observability.md](observability.md) §8).
 
 ## 8. Decisions
 
@@ -515,6 +518,13 @@ Two properties matter more than the tooling choice:
 
 The purpose is to settle the empirical questions the plan leaves open, so the headline metrics are
 completion-without-escalation, cost per *completed* run, and human interventions per run.
+
+Output *quality* is not measured automatically: a human reads the artifacts, accepted rather than
+deferred, since an LLM judge over them inherits every failure mode of LLM review gates. The staged
+answer is attaching incidents to the commits that caused them — a lagging measure that needs only
+two cheap properties now (durable run records, keyed by the commit shas they produced). Subjective
+measures like maintainability and technical debt are explicitly out of scope — unsolved for human
+teams too — with a declared custom-metric hook as the supported alternative.
 
 ## 9. Open questions
 
