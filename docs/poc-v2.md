@@ -322,6 +322,56 @@ Note the split: **architect and security review the plan; QA and ops author arti
 stage.** An author should not also gate the loop that produces their input — that is how review
 loops oscillate.
 
+### Concrete models for the POC
+
+Tiers above are roles, not commitments. For POC work the assignment is driven by one principle:
+**during a POC, model reliability is worth more than model price, because a flaky model makes your
+own bugs undiagnosable.** If a run fails, you need to know whether the scheduler is wrong or the
+model simply mis-called a tool. A cheap-but-unreliable model turns every bug into a coin flip.
+
+So: **start with Claude Haiku 4.5 (`claude-haiku-4-5`) in every role.** It is the cheapest current
+Claude model at $1/$5 per MTok input/output, and it tool-calls reliably enough to keep the model a
+non-variable while the orchestration is under test. Upgrade a role to `claude-sonnet-5` ($2/$10) only
+when that role demonstrably fails at its job — most likely the senior (writing code) and the
+principal (reviewing diffs). Reach for `claude-opus-5` ($5/$25) only if plan *quality* is what
+blocks, which the POC is not really testing.
+
+Starting Haiku-everywhere has a second benefit: it answers the S4 light-tier question
+(can a weak model complete a subslice?) in stage S0, cheaply, instead of at the end.
+
+**Watch the context window.** Haiku 4.5 is 200K where Sonnet 5 and Opus 5 are 1M. A principal
+reviewing a large merged diff is the likely first overflow — another reason the per-phase session
+design matters, since it keeps each review's context to one slice.
+
+### Cost, with real numbers
+
+Per turn at a representative 50K input / 2K output, and for a 100-turn run:
+
+| | $/turn uncached | $/turn cached | 100-turn run, cached |
+| --- | --- | --- | --- |
+| `claude-haiku-4-5` | $0.06 | $0.015 | **~$1.50** |
+| `claude-sonnet-5` | $0.12 | $0.03 | ~$3 |
+| `claude-opus-5` | $0.30 | $0.075 | ~$7.50 |
+
+"Cached" assumes cache reads at 0.1× the base input rate, with writes at 1.25× on the default
+5-minute TTL — so two requests sharing a prefix already break even.
+
+**Prompt caching is the largest single lever, and this workflow is unusually well suited to it.**
+The same PRD, plan and slice spec are resent across reviewer rounds and agents. That requires prompt
+*ordering discipline*: stable artifacts first, volatile content (the current round's findings, the
+latest diff) last, after the final cache breakpoint. Verify with
+`usage.cache_read_input_tokens` — if it is zero across repeated calls, something in the prefix is
+changing and the discount is silently not happening.
+
+Two smaller levers: thinking tokens bill as output, so run POC roles at `output_config.effort: "low"`
+on Sonnet/Opus (Haiku 4.5 does not accept `effort` — simply leave thinking off there); and the turn
+caps from §2 are the backstop against a loop that misbehaves overnight.
+
+**But the biggest savings are architectural, not model choice**, and they are already in the design:
+S0's stub roles cost nothing, recorded fixtures replay for free, and memoized steps mean debugging
+the merge phase does not re-run the PRD interview. A POC iterated mostly through stubs and fixtures
+spends single-digit dollars per *day*, whichever model is configured.
+
 ### The principal is a role, not a session
 
 Tempting to give the principal one long-lived session spanning the whole run: it reviews the plan,
@@ -398,8 +448,10 @@ Empirical, not architectural — each needs a real run to answer, and none block
 5. **The PRD loop may converge on agreement rather than quality.** Reviewers that see the previous
    round's rejections may simply stop objecting. Worth checking whether round-5 findings are
    substantively weaker than round-1 findings, or merely fewer.
-6. **Cost per run is unmeasured and probably large.** 60–100+ agent turns. Recorded-fixture mode is
-   not optional for iterating on this, and the turn caps (§2) are a floor, not a budget.
+6. **Cost per run is estimated, not measured.** §8 puts a cached 100-turn run at roughly $1.50 on
+   Haiku and $7.50 on Opus, but that assumes a 50K-token average context and a cache that actually
+   hits. Real context growth across a long run is the unknown; measure `usage` from the first real
+   runs rather than trusting the estimate.
 7. **Which repository is the POC target.** The one genuinely blocking unknown: it determines the
    pre-baked image, the toolchain, and `testCmd` ([poc.md](poc.md) §3).
 
