@@ -424,6 +424,8 @@ only extends the tier already in use to sub-agents, which is a much smaller step
 ## 10. Open items
 
 Empirical, not architectural — each needs a real run to answer, and none blocks starting.
+[observability.md](observability.md) specifies the instrument that closes them, and names the metric
+for each; §5 there covers why a single run per configuration proves nothing.
 
 1. **Slice granularity has no defined target.** "Independently workable" is not a size. Too large
    and the senior's context overflows; too small and coordination dominates. With no file-level

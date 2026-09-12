@@ -41,5 +41,6 @@ orc run ship-feature # run it on AWS
 | [docs/poc.md](docs/poc.md) | POC v1: what's in, what's deliberately deferred |
 | [docs/poc-v2.md](docs/poc-v2.md) | POC v2: the feature-delivery workflow, scheduling, gates |
 | [docs/environments.md](docs/environments.md) | Sandbox environments from the repo's dev container |
+| [docs/observability.md](docs/observability.md) | OTEL metrics, and how to compare configurations |
 
 Status: **design phase.** Nothing is implemented yet. `docs/plan.md` is the thing to read first.

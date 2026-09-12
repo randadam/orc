@@ -358,7 +358,7 @@ appears in the audit log. This exercise is the milestone, not a checkbox on it.
 ### M4 — Scale and developer experience (3 weeks)
 
 Warm sandbox pools to cut cold start. Cost and token accounting per run/agent, enforced against
-`limits`. OpenTelemetry traces spanning orchestrator → child agents → model calls. `orc attach`
+`limits`. OpenTelemetry traces spanning orchestrator → child agents → model calls ([observability.md](observability.md)). `orc attach`
 for live steering of a running agent (Pi's `steer` over RPC). GitHub App trigger.
 
 *Exit:* p50 agent start under 10s. A run that exceeds `usd_budget` halts and reports rather than
@@ -497,6 +497,24 @@ Two consequences worth stating here rather than burying:
   than an install performed inside it. The resulting manifest change lands in the diff and is
   reviewed like any other code change — which is the real control, since the risk is what reaches
   the user's production build, not sandbox escape.
+
+### D6 — Observability is OpenTelemetry, emitted outside the sandbox (decided)
+
+Instrumented with the OTEL SDK from the first milestone, borrowing `gen_ai.*` semantic conventions
+for the agent/tool/model layer and `orc.*` for orchestration concepts they do not model. Full design
+in [observability.md](observability.md).
+
+Two properties matter more than the tooling choice:
+
+- **Nothing inside the sandbox emits a metric that counts.** The same rule as verification: a number
+  the model can author is not evidence. Spans come from the runner (derived from Pi's RPC event
+  stream, so Pi needs no instrumentation), costs from the broker (the only path to a model, already
+  counting tokens for budget), and git facts from the integration step.
+- **Comparison is keyed on the policy hash**, which already identifies a configuration — models,
+  effort, caps, prompts, skills. No second notion of identity to drift from it.
+
+The purpose is to settle the empirical questions the plan leaves open, so the headline metrics are
+completion-without-escalation, cost per *completed* run, and human interventions per run.
 
 ## 9. Open questions
 

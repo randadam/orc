@@ -47,6 +47,7 @@ Anything not in service of these four is out.
 | Two roles with different tool policy | Proves per-role enforcement is real |
 | `ctx.verify()` — runner-executed commands, results the model cannot author | Every "green" in every gate depends on it |
 | Concurrency cap and a crude turn cap per run and per agent | A runaway loop during development is a real cost event |
+| OTEL spans and the `orc.run.*` metrics, exported to a local collector | The open questions are empirical; instrumenting later means re-running everything ([observability.md](observability.md)) |
 | Session JSONL persisted to a local directory | Needed for resume and for recorded tests |
 
 That's it. Roughly: a broker, a runner, an extension, an SDK, and one example workflow.
