@@ -38,6 +38,7 @@ orc run ship-feature # run it on AWS
 | [docs/plan.md](docs/plan.md) | The development plan: architecture, components, milestones, risks |
 | [docs/proxy-design.md](docs/proxy-design.md) | The broker — sentinel credentials, egress policy, threat model |
 | [docs/plugin-api.md](docs/plugin-api.md) | Writing orchestration plugins, the SDK surface, `orc.config.ts` |
+| [docs/phases.md](docs/phases.md) | The build order: nine playable phases with acceptance criteria |
 | [docs/poc.md](docs/poc.md) | POC v1: what's in, what's deliberately deferred |
 | [docs/poc-v2.md](docs/poc-v2.md) | POC v2: the feature-delivery workflow, scheduling, gates |
 | [docs/environments.md](docs/environments.md) | Sandbox environments from the repo's dev container |

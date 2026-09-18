@@ -3,7 +3,7 @@
 Read this first. It exists so a session with no prior context can pick up the design without
 re-deriving it or re-litigating settled questions.
 
-**Status: design complete, implementation not started.** Nine documents, no code.
+**Status: design complete, implementation not started.** Ten documents, no code.
 
 ---
 
@@ -11,10 +11,14 @@ re-deriving it or re-litigating settled questions.
 
 1. **[docs/plan.md](docs/plan.md)** — architecture, components, decisions (§8), open questions (§9).
    The decisions in §8 are the spine; everything else elaborates them.
-2. **[docs/poc.md](docs/poc.md)** — POC v1. What gets built first and what is deliberately deferred
-   behind named seams. **Start here for implementation.**
-3. **[docs/poc-v2.md](docs/poc-v2.md)** — the feature-delivery workflow v1 is a skeleton of.
-4. The rest as needed: [proxy-design](docs/proxy-design.md) (the broker),
+2. **[docs/phases.md](docs/phases.md)** — the build order. Nine playable phases, each with scope and
+   acceptance criteria, plus the decisions settled and left open per phase. **Start here for
+   implementation**; each phase gets its own detailed plan from this.
+3. **[docs/poc.md](docs/poc.md)** — POC v1. What gets built first and what is deliberately deferred
+   behind named seams. Scope authority for phases 0–3.
+4. **[docs/poc-v2.md](docs/poc-v2.md)** — the feature-delivery workflow v1 is a skeleton of. Scope
+   authority for phases 4–8.
+5. The rest as needed: [proxy-design](docs/proxy-design.md) (the broker),
    [plugin-api](docs/plugin-api.md) (the SDK surface), [environments](docs/environments.md)
    (dev containers), [observability](docs/observability.md) (metrics),
    [console](docs/console.md) (UI and connectors), [decision-layer](docs/decision-layer.md) (Jev).
@@ -81,7 +85,7 @@ becomes a refactor.
 
 ---
 
-## Two staging vocabularies, and they are sequential
+## Three staging vocabularies, and one of them is the order
 
 Easy to confuse — they are phases of different things:
 
@@ -89,8 +93,11 @@ Easy to confuse — they are phases of different things:
   design (can Pi's `tool_call` hook actually veto a tool?), then SDK, sandboxes, broker, resume.
 - **poc-v2.md §9 uses S0–S4.** That is the feature-delivery workflow, built *after* v1 stands. S0 is
   a stubbed walking skeleton; S2 is the first real implementation; S3 adds the scheduler.
+- **phases.md uses Phases 0–8**, which is Weeks 0–3 followed by S0–S4 as one sequence, with an
+  observability increment attached to each. The mapping table is in phases.md §2.
 
-Weeks first, then stages.
+Weeks first, then stages. **Plan against the phase numbers**; poc.md and poc-v2.md remain the record
+of how scope was cut, and phases.md is the record of the order.
 
 ---
 
@@ -98,7 +105,8 @@ Weeks first, then stages.
 
 Roughly 30 across the docs, each listed at the end of its own document. They are not equivalent:
 
-- **Blocking:** the target repo (above). That is the whole list.
+- **Blocking:** the target repo (above). That is the whole list. phases.md §15 holds the ten
+  questions put to the author before detailed phase planning starts; the target repo is Q1.
 - **Empirical** — need a real run, not a decision. Slice granularity, conflict rate, whether Haiku
   can carry implementation, whether the PRD loop converges on quality or merely agreement.
   [docs/observability.md](docs/observability.md) is the instrument built to answer them, and names
