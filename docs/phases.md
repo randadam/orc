@@ -65,6 +65,8 @@ listed in §12 so the seams that keep them cheap stay visible, and no more.
 
 ## 3. Phase 0 — spikes: is Pi the harness we think it is?
 
+> Detailed plan: [phases/phase-0.md](phases/phase-0.md).
+
 **Goal.** Falsify the load-bearing assumptions about Pi before anything is built on them. Nothing
 from this phase is kept as code.
 
@@ -636,7 +638,8 @@ recorded here, struck through with the decision, per the convention in CLAUDE.md
    pulled forward.
 5. **Which Pi version are you tracking?** A pinned release or HEAD. Pi is named as a fast-moving
    upstream ([plan.md](plan.md) §6); the phase 0 spikes are only valid against the version phases 1–8
-   pin, so it needs to be the same one.
+   pin, so it needs to be the same one. *(Latest on npm as of 2026-09-18 is `0.85.1`;
+   [phases/phase-0.md](phases/phase-0.md) assumes that pin pending your answer.)*
 6. **What is the development environment?** Docker available locally (Desktop, or Linux with
    rootless?), and is the `devcontainer` CLI acceptable as a build-time dependency? Phase 2 assumes
    both.

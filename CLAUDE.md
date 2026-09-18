@@ -126,6 +126,9 @@ these docs are struck through with the answer rather than deleted, which is the 
 - **Decisions live in plan.md §8.** A new decision gets a D-number there plus detail in the relevant
   doc — not one or the other.
 - **Every doc ends with its own open items.** Keep that; it is how the triage above stays honest.
+- **Detailed phase plans live in `docs/phases/phase-N.md`.** phases.md is the order authority; a
+  phase plan is the execution authority for its phase and opens by stating which §15 questions it
+  assumes answers to. Phase 0 is written; it depends on almost none of them.
 - **Cross-references use a relative markdown link plus a section number.** Section numbers have been renumbered a few times,
   so verify a reference resolves before trusting it.
 - Prose over bullets where reasoning matters. The reasoning is the valuable part — several of these
