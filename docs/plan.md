@@ -579,11 +579,18 @@ Three boundaries hold it in place:
 
 Two remain, plus one the POC needs immediately:
 
-1. **Model backend — Bedrock or direct API keys?** Bedrock + SigV4 in the broker removes long-lived
-   model credentials from the system entirely and is the recommended default. Bedrock's catalog now
-   covers open-weight models as well as frontier ones ([proxy-design.md](proxy-design.md) §3.4), so this
-   choice no longer costs model selection. Direct keys remain for anything Bedrock doesn't carry.
-   *This decides the model gateway's design.*
+1. **Model backend — which AWS path, and when?** Signing with an IAM role removes long-lived model
+   credentials entirely, and there are three ways to get it. **Claude Platform on AWS** is
+   Anthropic-operated with SigV4 and IAM but same-day first-party API parity and unprefixed model
+   IDs — the simplest path, and not the same thing as Bedrock. **Bedrock** is partner-operated and
+   earns its place for the open-weight catalog ([proxy-design.md](proxy-design.md) §3.4).
+   **Direct API keys** are fine to start: the broker holds the only copy, and the migration is one
+   function there (see below). Caching, effort and structured outputs are available on all three, so
+   the cost model survives the move.
+
+   *Starting on API keys does not foreclose this*, provided the broker stays in the request path
+   from day one — see [poc.md](poc.md) §4.
+
 2. **What scale are we building for?** 10 concurrent agents and 100 concurrent agents are different
    schedulers. Assumed: tens, single-digit concurrent runs.
 3. **Which repository is the POC target?** Blocking for the POC, not for the architecture. It

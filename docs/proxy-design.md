@@ -108,28 +108,48 @@ oracle for probing key validity.
 Streaming responses (SSE) proxy through unbuffered. The broker parses only enough of the stream to
 extract token usage for budget accounting.
 
-### 3.4 Bedrock: the better default on AWS
+### 3.4 SigV4 on AWS: three paths, and the simplest one is not Bedrock
 
 Direct provider keys mean a long-lived secret exists *somewhere* — in Secrets Manager, in the
-broker's memory, in a rotation runbook. Amazon Bedrock removes it:
+broker's memory, in a rotation runbook. Signing with an IAM role removes it. There are three ways to
+get there, and the design should not assume Bedrock is the one.
 
-1. Sandbox sends `anthropic-messages` format to the broker with a sentinel. Unchanged — Pi does not
-   know or care what backend is behind the gateway.
-2. Broker validates, translates to the Bedrock **Converse / ConverseStream** API, and **signs with
-   SigV4 using its own ECS task role**.
-3. IAM policy on that role is the authorization boundary: which models, which regions, and
-   (via condition keys) under what constraints.
+| | Operated by | Model IDs | API parity | Wire translation in the broker |
+| --- | --- | --- | --- | --- |
+| **Claude Platform on AWS** | Anthropic | bare (`claude-sonnet-5`) | same-day with first-party | **none** |
+| **Amazon Bedrock** (Mantle client) | AWS | `anthropic.`-prefixed | partner schedule, feature subset | none — Mantle is a Messages-API endpoint |
+| **Bedrock Converse** | AWS | `anthropic.`-prefixed | — | `anthropic-messages` → Converse |
 
-Converse rather than per-model `InvokeModel` payloads, deliberately: Converse is model-agnostic and
-normalizes tool use across the whole catalog, so one translation (`anthropic-messages` → Converse)
-covers every model rather than one adapter per family. Pi's agent loop depends entirely on tool
-calling, and a uniform tool-call shape is what makes swapping models a config change.
+**Claude Platform on AWS is the simplest path to the property this section wants.** It is
+Anthropic-operated with SigV4 auth, AWS IAM access control and Marketplace billing — so the
+credential-free goal is met — while the API surface matches first-party with same-day parity and
+model IDs carry no prefix. The broker's proxying logic is untouched: only *where* the request goes
+and *how* it is signed change. It is not Bedrock, and the two coexist.
+
+**Bedrock earns its place for the open-weight catalog**, not for Claude models. Its Mantle client is
+a Messages-API endpoint, so even there no Converse translation is needed for Claude. Converse only
+becomes worth the translation when one uniform tool-call shape across the *whole* open-weight
+catalog is the goal (below).
+
+In every case:
+
+1. Sandbox sends `anthropic-messages` to the broker with a sentinel. Unchanged — Pi does not know or
+   care what backend is behind the gateway.
+2. Broker validates the sentinel and **signs with SigV4 using its own ECS task role**.
+3. IAM policy on that role is the authorization boundary: which models, which regions, and (via
+   condition keys) under what constraints.
 
 No model API key exists in the system at all. Rotation becomes an IAM concern. Per-run attribution
-lands in CloudTrail for free. **This is the recommended default**; direct-key support exists for
-models Bedrock doesn't carry, and it is the same code path with a different credential resolver.
+lands in CloudTrail for free.
 
-#### Open-weight models
+**Feature parity checked, not assumed.** Prompt caching (5m and 1h), automatic caching, adaptive
+thinking and effort, structured outputs and token counting are all available on Claude Platform on
+AWS *and* Bedrock — so the cost model in [poc-v2.md](poc-v2.md) §8, which leans heavily on cache
+reads, survives the move. Two caveats: the legacy Bedrock integration (Opus 4.6 and earlier) rejects
+top-level `cache_control` and needs explicit breakpoints, and cache diagnostics are first-party only.
+Partner pricing on Bedrock differs from the first-party rates the cost estimates use.
+
+#### Open-weight models#### Open-weight models
 
 Choosing Bedrock does not narrow the model lineup. As of early 2026 the serverless catalog carries
 roughly two dozen managed open-weight models — Llama, Mistral (Ministral, Large 3, Magistral),

@@ -104,7 +104,7 @@ function you later write a second version of.
 | **AWS everything** | Local Docker via dockerode | `Sandbox` interface: `start/exec/stop/mount` | `FargateSandbox` alongside `LocalDockerSandbox` |
 | **DynamoDB + S3** | JSON files on local disk | `RunStore`, `SessionStore` interfaces | Second impl per interface |
 | **Egress gateway, MITM, credential injection** | Sandbox has *no* network except the broker; the runner clones the workspace and mounts it | none needed — it is additive | The CONNECT proxy is new code, not a change to existing code |
-| **Bedrock SigV4** | Direct API key, held by the broker only | Credential resolver function in the broker | Second resolver; sentinel path is unchanged |
+| **SigV4 on AWS** (Claude Platform on AWS or Bedrock) | Direct API key, held by the broker only | Credential resolver function in the broker | Second resolver + a base URL. The sentinel path, the sandbox, the runner and every workflow are untouched — **provided nothing outside the broker ever constructs a model client.** That one discipline is what keeps this a day's work instead of a refactor ([proxy-design.md](proxy-design.md) §3.4) |
 | **LLM-driven orchestration (`orc_*` tools)** | Code-driven workflows only | The tools are thin wrappers over the same runner RPC the SDK uses | Register the tools; the control-plane calls already exist |
 | **Budget enforcement, approvals, policy hash** | Token counts logged, nothing enforced | Broker already sees every token | Add the check where the counter already increments |
 | **`orc.config.ts` as a separate file** | Roles declared inline, next to the workflow | `defineConfig()` returns the same frozen value either way | Move the call to its own file when the security boundary needs it |

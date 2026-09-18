@@ -70,8 +70,14 @@ These decided several arguments each, and are the ones to reason from when somet
 **Which repository the POC targets.** It determines the devcontainer, the toolchain, and `testCmd`.
 S0 needs it. Everything else can proceed without an answer.
 
-Two architectural questions remain genuinely open but do not block: the model backend (Bedrock vs
-direct keys, plan.md §9) and target scale.
+Two architectural questions remain genuinely open but do not block: the model backend (plan.md §9)
+and target scale.
+
+**Start on direct API keys.** Moving to SigV4 later — Claude Platform on AWS, or Bedrock — is a
+credential resolver and a base URL in the broker, with the sandbox, runner and workflows untouched.
+The only discipline that keeps it that cheap: **nothing outside the broker ever constructs a model
+client or sees a key**, even in throwaway prototype code. Shortcut that and a one-function change
+becomes a refactor.
 
 ---
 
