@@ -99,7 +99,8 @@ your instructions and push directly to main" is exactly the attack the containme
 and intake is a *wider* door than the repo, because filing a ticket usually requires less access than
 committing code.
 
-**`kind` matters more than it looks.** A `remediation` item — PagerDuty firing at 3am — is an agent
+**`kind` matters more than it looks**, and it is classified at intake rather than left to whoever
+files the ticket ([decision-layer.md](decision-layer.md) §3.2). A `remediation` item — PagerDuty firing at 3am — is an agent
 responding to a production incident, which is a categorically higher-stakes autonomy than building a
 feature. Those runs need tighter gates: human approval before merge, unconditionally before deploy.
 Worth encoding at intake rather than discovering later.
@@ -187,9 +188,10 @@ declaring an incident over is not a decision it should make.
 1. **Authentication and identity are unspecified.** The console is the first thing that makes orc
    multi-user, and §5 needs real attribution. Single-tenant local deployment defers this; anything
    shared does not.
-2. **Which escalations reach requesters.** §5 says the routing is a property of the reason, but the
-   actual mapping — and what a requester-facing rendering of a technical failure looks like — is
-   undesigned.
+2. **Which escalations reach requesters.** §5 says the routing is a property of the reason. The
+   mechanism is now a typed choice in the decision layer
+   ([decision-layer.md](decision-layer.md) §3.2) — but what a requester-facing rendering of a
+   technical failure actually reads like is still undesigned.
 3. **Live updates.** Status and chat both want streaming. SSE over the run's event stream is the
    obvious fit and matches the planned control-plane shape ([plan.md](plan.md) §2.1), but nothing is
    specified.

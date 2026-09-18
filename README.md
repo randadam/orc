@@ -43,5 +43,6 @@ orc run ship-feature # run it on AWS
 | [docs/environments.md](docs/environments.md) | Sandbox environments from the repo's dev container |
 | [docs/observability.md](docs/observability.md) | OTEL metrics, and how to compare configurations |
 | [docs/console.md](docs/console.md) | The console and connectors: intake, interaction, observation |
+| [docs/decision-layer.md](docs/decision-layer.md) | Fast typed decisions (Jev) behind an LLM-backed interface |
 
 Status: **design phase.** Nothing is implemented yet. `docs/plan.md` is the thing to read first.

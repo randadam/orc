@@ -151,7 +151,15 @@ decision per role and not an architectural one. Validate any open-weight model a
 before trusting it in a worker role; the recorded-session test harness (plugin-api.md §7) is the
 cheap way to do that.
 
-### 3.5 The model catalog must come from the broker
+### 3.5 A second upstream: the decision layer
+
+`api.typesafe.ai` sits behind the same gateway on the same terms — sentinel inbound, real credential
+substituted on egress, never returned inward ([decision-layer.md](decision-layer.md) §6). It is not
+a Pi provider and no agent can address it directly; decision requests originating inside a sandbox
+(the `tool_call` gate) travel the runner's unix socket outward like every other call. Its spend
+counts toward the run budget, and every decision is audited with its confidence and source.
+
+### 3.6 The model catalog must come from the broker
 
 Pi's model layer normalizes *protocol*, not *capability*. Differences it cannot normalize are
 declared as data on each `Model` descriptor — `contextWindow`, `maxTokens`, `cost`, `reasoning`,
@@ -176,7 +184,7 @@ So the broker owns the catalog and serves it:
 The sentinel authenticates the catalog request, so the catalog is per-run and per-role without any
 extra credential.
 
-### 3.6 Inbound wire format is a per-role choice
+### 3.7 Inbound wire format is a per-role choice
 
 The broker's inbound format is independent of its upstream. Translating to Bedrock Converse happens
 regardless, so what Pi speaks *to* the broker is a free choice — and not a purely cosmetic one.
@@ -199,7 +207,7 @@ not a fork in the broker.
 This is a **v1 concern, not a POC one** — see [poc.md](poc.md), which pins a single inbound format
 and keeps the choice behind one interface until there is a second role that needs it.
 
-### 3.7 Budget enforcement
+### 3.8 Budget enforcement
 
 The broker sees every token in both directions, which makes it the only correct place to enforce
 spend. Per-run counters in DynamoDB, updated per response. When a run crosses `limits.usd_budget`,

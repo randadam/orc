@@ -250,6 +250,12 @@ const Finding = z.object({
 An LLM asked to find problems always finds some. Without graded severity, "any finding" gates the
 loop and you hit the cap on every run.
 
+Reviewers self-assigning severity makes the ruler wobble — the architect's "blocking" and security's
+"blocking" are calibrated differently, and neither is stable between round 1 and round 5, which makes
+the convergence question in §10 unanswerable. The decision layer fixes this by splitting the job:
+**the LLM writes the finding, its evidence and its remedy; a typed decision assigns the severity**,
+uniformly across every reviewer and round ([decision-layer.md](decision-layer.md) §3.1).
+
 **The principal arbitrates.** Reviewers are advisory. The principal must accept or reject each
 finding *with written rationale*, and the rejections are part of the artifact. Without a decider,
 security says "add X," ops says "X is operationally bad," and the loop burns its cap on an
@@ -434,21 +440,25 @@ for each; §5 there covers why a single run per configuration proves nothing.
 2. **Conflict rate is unknown.** Concurrent slices may touch the same files often enough that the
    resolve-and-reverify tail dominates the run. Measure before optimizing; if it bites, the lever is
    slice granularity, not filesystem partitioning.
-3. **Re-verify cost after each merge.** Running the full suite per merge serializes the tail of the
+3. **Merge conflict and verify-failure triage are currently blind.** A failing slice is retried
+   without asking whether the failure is real, flaky, or environmental; a conflict is attempted
+   before asking whether it is mechanical or semantic. Both are typed-decision shaped
+   ([decision-layer.md](decision-layer.md) §3.2).
+4. **Re-verify cost after each merge.** Running the full suite per merge serializes the tail of the
    run. Affordable for small repos; needs affected-test selection for large ones.
-4. **No rollback of a bad merge.** If a merge passes review but breaks a later slice, the recovery
+5. **No rollback of a bad merge.** If a merge passes review but breaks a later slice, the recovery
    path is escalation and nothing more. A `git revert` of the offending merge is the obvious
    mechanism; whether the run can continue afterwards is unspecified.
-5. **The PRD loop may converge on agreement rather than quality.** Reviewers that see the previous
+6. **The PRD loop may converge on agreement rather than quality.** Reviewers that see the previous
    round's rejections may simply stop objecting. Worth checking whether round-5 findings are
    substantively weaker than round-1 findings, or merely fewer.
-6. **Cost per run is estimated, not measured.** §8 puts a blended cached run at roughly $2–3, but
+7. **Cost per run is estimated, not measured.** §8 puts a blended cached run at roughly $2–3, but
    that assumes a 50K-token average context and a cache that actually hits. Real context growth
    across a long run is the unknown; measure `usage` from the first real runs rather than trusting
    the estimate.
 8. **Can Haiku 4.5 carry implementation?** The split in §8 puts the cheap model on the most
    tool-intensive role. The measurement that decides it is turns-to-green per slice, taken at S2.
-7. **Which repository is the POC target.** The one genuinely blocking unknown: it determines the
+9. **Which repository is the POC target.** The one genuinely blocking unknown: it determines the
    pre-baked image, the toolchain, and `testCmd` ([poc.md](poc.md) §3).
 
 ---

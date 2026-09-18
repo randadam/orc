@@ -553,6 +553,28 @@ Three things follow:
 The POC needs no work for this: run state is already on disk keyed by step id because resume demands
 it, and the console reads the same records.
 
+### D8 — A decision layer, with Jev as its first implementation (decided)
+
+orc makes many small judgements that are not generation — finding severity, conflict triage,
+escalation routing, tool-call risk. Each is currently an expensive LLM call for a small decision, or
+a crude static rule because an LLM would be too slow. [Jev](https://typesafe.ai), TypeSafe AI's
+System One model, returns a typed decision with calibrated confidence in 70–500ms and fits that
+shape. Full design in [decision-layer.md](decision-layer.md).
+
+Jev entered early access on 2026-09-15, so what is decided is a **`Decider` interface** with Jev as
+one implementation and an LLM as the other. Jev is off by default, enabled per question after shadow
+measurement, and its absence degrades orc rather than breaking it.
+
+Three boundaries hold it in place:
+
+- **A typed decision is still a model output.** "Green" remains an exit code from the runner. Jev
+  routes and triages; it never adjudicates correctness.
+- **Jev grades, the LLM explains.** Where the design requires written rationale, Jev cannot supply
+  it — so the LLM writes the finding and its reasoning while Jev assigns the severity, on one ruler
+  across every reviewer and round. That makes the loop gate and the convergence metric meaningful,
+  which is a quality improvement rather than a cost saving.
+- **It may veto, never permit.** A Jev gate can only narrow what frozen policy already allows.
+
 ## 9. Open questions
 
 Two remain, plus one the POC needs immediately:

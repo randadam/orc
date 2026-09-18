@@ -149,6 +149,7 @@ Each of these exists to close a specific open question:
 | `orc.model.cache_hit_ratio` | role, model | Is the caching discipline actually working? |
 | `orc.package.requests` | decision, ecosystem | How often agents need unplanned dependencies |
 | `orc.step.cache` | hit/miss | Whether resume is saving what it should |
+| `orc.decision.*` | question, source | The decision layer's accuracy, calibration and latency — see [decision-layer.md](decision-layer.md) §5 |
 
 `orc.review.findings` split by severity *and round* is the one I would build first. It directly tests
 whether the review loop produces signal or ceremony — if round-5 findings are merely fewer rather

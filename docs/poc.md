@@ -99,8 +99,8 @@ function you later write a second version of.
 
 | Deferred | POC does | Seam | Cost to adopt later |
 | --- | --- | --- | --- |
-| **Model catalog from broker** ([proxy-design.md](proxy-design.md) §3.5) | Two pinned models, descriptors hardcoded — Haiku for implementation, Sonnet elsewhere ([poc-v2.md](poc-v2.md) §8) | `resolveModels(): Promise<Model[]>` in `@orc/pi`, returns a constant | Swap the body for a `fetch` to `/m/catalog`; it is already the argument to Pi's `refreshModels` hook |
-| **Inbound wire format choice** ([proxy-design.md](proxy-design.md) §3.6) | `anthropic-messages` only | `ModelBackend` interface in the broker, one impl | Add a second impl; no call sites change |
+| **Model catalog from broker** ([proxy-design.md](proxy-design.md) §3.6) | Two pinned models, descriptors hardcoded — Haiku for implementation, Sonnet elsewhere ([poc-v2.md](poc-v2.md) §8) | `resolveModels(): Promise<Model[]>` in `@orc/pi`, returns a constant | Swap the body for a `fetch` to `/m/catalog`; it is already the argument to Pi's `refreshModels` hook |
+| **Inbound wire format choice** ([proxy-design.md](proxy-design.md) §3.7) | `anthropic-messages` only | `ModelBackend` interface in the broker, one impl | Add a second impl; no call sites change |
 | **AWS everything** | Local Docker via dockerode | `Sandbox` interface: `start/exec/stop/mount` | `FargateSandbox` alongside `LocalDockerSandbox` |
 | **DynamoDB + S3** | JSON files on local disk | `RunStore`, `SessionStore` interfaces | Second impl per interface |
 | **Egress gateway, MITM, credential injection** | Sandbox has *no* network except the broker; the runner clones the workspace and mounts it | none needed — it is additive | The CONNECT proxy is new code, not a change to existing code |
