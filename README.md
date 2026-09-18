@@ -45,4 +45,8 @@ orc run ship-feature # run it on AWS
 | [docs/console.md](docs/console.md) | The console and connectors: intake, interaction, observation |
 | [docs/decision-layer.md](docs/decision-layer.md) | Fast typed decisions (Jev) behind an LLM-backed interface |
 
-Status: **design phase.** Nothing is implemented yet. `docs/plan.md` is the thing to read first.
+Status: **design phase.** Nothing is implemented yet.
+
+**New here (or starting a fresh session)? Read [CLAUDE.md](CLAUDE.md) first** — reading order, the
+eight decisions and what they rest on, what was rejected and why, and the single open question that
+blocks starting.
