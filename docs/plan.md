@@ -397,7 +397,9 @@ adapters — only if the runner's RPC bridge proves genuinely harness-agnostic.
 - **A new plugin format.** Pi packages, as specified upstream.
 - **A hosted multi-tenant SaaS.** v1 is single-tenant, deployed into the user's own AWS account.
   Multi-tenancy changes the isolation model substantially and should not be retrofitted casually.
-- **A web UI.** CLI and API first. A UI is a client of the event stream, buildable later by anyone.
+- **A web UI in v1.** CLI and API first — but the console is now planned as the first client of a
+  shared intake/interaction/observation surface, not as a bespoke front end
+  ([console.md](console.md)). The principle is unchanged: a UI is a client, buildable by anyone.
 - **Preventing prompt injection.** Containing its blast radius is the whole security posture.
 - **Measuring maintainability or technical debt.** Unsolved for human teams; every proxy is
   contested and gameable. orc ships a custom-metric hook instead of a bad built-in
@@ -525,6 +527,31 @@ answer is attaching incidents to the commits that caused them — a lagging meas
 two cheap properties now (durable run records, keyed by the commit shas they produced). Subjective
 measures like maintainability and technical debt are explicitly out of scope — unsolved for human
 teams too — with a declared custom-metric hook as the supported alternative.
+
+### D7 — The console is a client of a shared surface, not a UI project (decided)
+
+A non-technical user needs a way to plan a feature without `orc attach pm` dropping them into a
+terminal. The failure mode is building that as a bespoke front end wired to CLI internals, which
+makes JIRA the second integration path and PagerDuty the third. Full design in
+[console.md](console.md).
+
+So orc exposes three surfaces — **intake** (work items, from a console form, JIRA, PagerDuty or the
+CLI), **interaction** (the escalation queue), and **observation** (status and metrics) — and every
+client, the console included, is a client of those. "Integrate with JIRA later" then means writing a
+connector, not a rewrite.
+
+Three things follow:
+
+- **Requester and operator are different audiences** sharing a data model. Requester views ship
+  first; a metrics console built before there are runs to compare displays noise authoritatively.
+- **A work item's description is untrusted input**, the same category as repository content — and
+  intake is a wider door than the repo, since filing a ticket usually needs less access than
+  committing code.
+- **Write-back is half of every connector.** A ticket that spawns a run gets progress comments and a
+  PR link, or it is a trigger rather than an integration.
+
+The POC needs no work for this: run state is already on disk keyed by step id because resume demands
+it, and the console reads the same records.
 
 ## 9. Open questions
 

@@ -146,6 +146,10 @@ Seams have a cost, and the wrong ones are worse than none. These stay concrete i
 - **No `orcd` control-plane service.** The `orc` CLI *is* the control plane in the POC: it evaluates
   the config, mints sentinels, starts sandboxes, runs the workflow. Splitting it into a service is a
   deployment concern, and deployment is deferred entirely.
+- **No console.** One negative discipline serves it, and resume already enforces it: run state lives
+  on disk, never only in the workflow process's memory, so the console later reads the same records
+  ([console.md](console.md) §7). Give escalations and work items stable ids from S1 — free now, a
+  refactor later.
 
 ---
 
