@@ -104,8 +104,10 @@ write around.
    ten separate times, reporting after each."}`.
 2. On the **second** `tool_execution_start`, send `{"type":"abort"}`. Await `agent_end`.
 3. Locate the session `.jsonl` under the session dir. Kill the process.
-4. Start a **new** Pi process. Send `{"type":"switch_session","sessionPath":"<that file>"}`, then
-   `{"type":"get_state"}`.
+4. Start a **new** Pi process **with `--session <that file>`** on the command line — the flag
+   exists (`--session <path|id>`), but the docs do not say whether RPC mode honours it. Send
+   `{"type":"get_state"}`. If the prior messages are absent, start again without the flag and send
+   `{"type":"switch_session","sessionPath":"<that file>"}` instead, then `get_state`.
 5. Send a follow-up prompt: *"How many sleeps had completed before you were interrupted?"* Await
    `agent_end`.
 
@@ -117,8 +119,11 @@ write around.
    prior context — assert the reply is non-empty and the turn produced `agent_end`; the *content*
    check is by eye and goes in the finding).
 
-Also record: does Pi accept a session at **startup** via a flag, or only via `switch_session` after
-start? The RPC doc documents only the latter. Either is fine for the SDK; the finding says which.
+Also record which mechanism worked. `--session` is documented for interactive mode and
+`switch_session` for RPC; whether the flag is honoured under `--mode rpc` is exactly what step 4
+finds out. Either is fine for the SDK; the finding says which. Also note for phase 1: the session
+directory resolves in the order `--session-dir` flag → `PI_CODING_AGENT_SESSION_DIR` → `sessionDir`
+in settings, so the runner can use the environment variable rather than a flag.
 
 **Finding.** `DRIVE: pass|fail — abort→agent_end in N.Ns; resume via switch_session|startup flag;
 context survives: yes|no`
@@ -217,23 +222,29 @@ trust prompt?
 
 **Procedure.** Three runs, each in a fresh temp project containing `.pi/settings.json` and a trivial
 `.pi/extensions/marker.ts` (registers a command; its presence proves the project config loaded).
-1. **No handler, no default.** Start Pi RPC in that cwd. Send a prompt. Does it complete, decline,
-   emit `extension_ui_request`, or hang? (The timeout catches the hang.)
+1. **No handler, no default.** Start Pi RPC in that cwd. Send a prompt. Pi's usage doc states that
+   non-interactive modes "do not show a trust prompt," so a hang is unlikely; the live question is
+   whether the default (`"ask"`, with nobody to ask) **silently declines** to load `.pi/` — in which
+   case the marker extension is absent and the turn otherwise completes. Record which. The timeout
+   stays as a guard.
 2. **Handler.** `-e ext.ts` where the extension answers `project_trust` with
    `{ trusted: "yes", remember: false }`. Send a prompt. Does the marker extension load?
 3. **Setting.** No handler; global `settings.json` (under the temp `HOME`) sets
-   `defaultProjectTrust: "always"` (verify the exact value name against the settings doc during the
-   spike — the extensions doc names the setting, not its values). Same check.
+   `"defaultProjectTrust": "always"`. The setting is **global only** — it is not honoured in a
+   project's `.pi/settings.json`, which is correct, since otherwise a repo could trust itself. Values
+   are `"ask"` (default), `"always"`, `"never"`. Same check.
 
 **Pass:** runs 2 and 3 both load the project extension and complete the turn. Run 1's behaviour is
 recorded whatever it is.
 
-**Finding.** `TRUST: headless default = completes|declines|ui_request|hangs; handler works: y/n;
-defaultProjectTrust works: y/n`
+**Finding.** `TRUST: headless default = loads|declines-silently|hangs; handler works: y/n;
+defaultProjectTrust=always works: y/n`
 
 **What it decides.** Phase 2's runner trusts the workspace by policy, not by prompt, so it needs one
 of runs 2/3 to work. Which one becomes the runner's mechanism. Run 1's answer says whether an
-*unconfigured* runner fails safe (declines) or fails stuck (hangs) — the latter is worth a guard.
+*unconfigured* runner fails safe (declines silently — the likely case) or fails stuck. A silent
+decline is the subtler hazard: a runner that forgot to set trust would run agents *without the
+project's extensions* and nothing would say so. Phase 2's runner should assert the marker loaded.
 
 ---
 
@@ -274,9 +285,11 @@ roughly fifteen Haiku turns.
 
 1. **Q5 must be answered before the findings are trusted.** Spikes against 0.85.1 say nothing about
    another version. If the pin changes, re-run.
-2. **`defaultProjectTrust` values are not confirmed here.** The extensions doc names the setting;
-   the settings doc has the values. Verify during spike 6 rather than trusting this plan.
+2. ~~`defaultProjectTrust` values are not confirmed here.~~ **Closed:** `"ask"` | `"always"` |
+   `"never"`, global settings only; and non-interactive modes never show the prompt (Pi settings
+   and usage docs, 2026-09-18). Spike 6 is updated accordingly.
 3. **The attach spike may reshape D4.** That is expected and cheap now; it would not be cheap after
    phase 1 builds `orc attach` on the wrong model.
-4. **Startup-flag session resume** is undocumented in the RPC doc. Spike 2 records which of the two
-   mechanisms exists; phase 1 builds on whichever it is.
+4. **Whether `--session` is honoured under `--mode rpc`.** The flag exists for interactive mode;
+   `switch_session` exists for RPC; the docs are silent on the overlap. Spike 2 now tries the flag
+   first and records which works; phase 1 builds on whichever it is.
