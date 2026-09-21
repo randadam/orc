@@ -77,7 +77,8 @@ creates. Only slices 1.11–1.12 and the live acceptance runs need `tudu`.
 | Model | **`claude-sonnet-5`**, one model for every role (phases.md §4) | The Haiku split arrives in phase 6 |
 | `zod` | `4.x` (4.6.5 current) | `z.toJSONSchema` is built in, which §2.3 needs |
 | `@opentelemetry/api`, `@opentelemetry/sdk-trace-base` | `1.9.x` / `2.x` (2.11.0 current) | D6: the real SDK, from the first emitter |
-| TypeScript, vitest, eslint, prettier | Current stable at scaffold time, exact in the lockfile | — |
+| TypeScript | **`6.0.3`**, not the `latest` `7.0.2` | typescript-eslint 8.70's peer range is `>=4.8.4 <6.1.0`; 6.0.3 is the newest release the lint toolchain supports (§13 item 11) |
+| vitest, eslint, prettier, typescript-eslint | `5.0.1`, `10.11.0`, `3.9.8`, `8.70.0` — current stable at scaffold time (2026-09-21) | — |
 
 Every pin is exact in `package.json`. No `^`, no `latest`, on anything.
 
@@ -824,3 +825,15 @@ are wrong before anything else is.
     pointless while the only supported environment is the author's; a Docker-capable runner becomes
     a real question in phase 2, when `LocalDockerSandbox` arrives and the fast tests stop being
     free of containers. Revisit there, not here.
+11. **TypeScript is a major behind `latest`** (§1.4). typescript-eslint 8.70 declares
+    `typescript@>=4.8.4 <6.1.0`, so TypeScript 7 — the current `latest` — puts the linter outside
+    its supported range on the slice that introduces it. 6.0.3 is the newest release both halves
+    agree on. Re-pin to 7.x when typescript-eslint ships support for it; nothing else in the
+    toolchain is holding it back.
+12. **`pnpm check` is build, typecheck, lint, test** — four steps where §2.12 names three. The
+    extra one is `tsc -p tsconfig.test.json`, which typechecks `packages/*/test` with `noEmit`:
+    the per-package build configs emit `dist` from `src` alone, so without it test files compile
+    nowhere and are never checked. CI runs `pnpm check`, so this is inside the gate, not beside it.
+13. **Prettier does not format `docs/` or any `*.md`.** The prose there is hand-wrapped and
+    reflowing it would bury a one-line edit in a whole-file diff. Code, config and workflows are
+    formatted; documentation is written.
