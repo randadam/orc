@@ -53,18 +53,18 @@ immediately; Pi's built-in tools are `read`, `bash`, `powershell`, `edit`, `writ
 
 ### 1.3 The seed
 
-`randadam/tudu` was seeded on 2026-09-21 and **this phase pins `592f4de`**. It is a React SPA,
+`randadam/tudu` was seeded on 2026-09-21 and **this phase pins `bf25ac6`**. It is a React SPA,
 an ordinary one **carrying no plans by design** ([plan.md](../plan.md) §8 D9) — what it should
 become is produced through orc. The sha is written in exactly three places: this line,
 `examples/loop-and-escape/README.md`, and `accept/phase1/seed.ts`, and nowhere else.
 
 **The fast suite is `pnpm test`, not `pnpm test:unit`** — the seed has no `test:unit`, and `test` is
-46 tests across 7 files in **3.6s with no services**, verified at that commit. That is what
+46 tests across 7 files in **about 4s with no services**, verified by running it at that commit. That is what
 `testCmd` binds to throughout this plan. `pnpm lint`, `pnpm typecheck` and `pnpm build` also exit 0.
 
-**Re-pin when the author's pnpm fix lands.** The seed currently commits a `package-lock.json` beside
-`pnpm-lock.yaml` and its CI runs `npm ci`; the fix is in flight ([fixture.md](../fixture.md) §9
-item 1) and moves the sha.
+The pnpm fix has landed, which is why the pin is `bf25ac6` and not the seed commit: no
+`package-lock.json`, CI on `pnpm install --frozen-lockfile`, `packageManager` set to `pnpm@10.33.0`,
+and the checks shifted left into git hooks ([fixture.md](../fixture.md) §5 item 1).
 
 Slices 1.0–1.10 do not need the seed: their tests run against a git repository the test itself
 creates. Only slices 1.11–1.12 and the live acceptance runs need `tudu`.
@@ -649,7 +649,7 @@ planned: the suggested one is *"Cap to-do titles at 200 characters, with a unit 
 `src/lib/todos.ts` beside `createTodo`, and `pnpm test` is the gate.
 
 The previously suggested task — rejecting empty or whitespace-only titles — **is already true at
-`592f4de`**: `createTodo` trims and returns `null`. Check again if the pin moves.
+`bf25ac6`**: `createTodo` trims and returns `null`. Check again if the pin moves.
 
 Acceptance 1 says this must read like ordinary TypeScript to someone who has not seen orc. The
 test is: every comment in the file is about the task or the control flow, and none explains an

@@ -649,7 +649,7 @@ Each is settled in the named phase's detailed plan, not here.
 | Structured-output mechanism for `ask()` | 0 | Submit tool · parse final message · provider structured outputs | The phase 0 spike |
 | ~~Where telemetry lands~~ | 1 | **Settled: in-process JSONL in the run dir; OTLP as a flag** ([phases/phase-1.md](phases/phase-1.md) §2.1) | Q6: no Docker, so no collector on the dev loop |
 | Control channel to an in-container runner | 2 | Attached stdio · runner connects out · runner listens | The reattach spike |
-| ~~Target repository (§15, Q1)~~ | — | **Settled 2026-09-21: `randadam/tudu`, seeded at `592f4de` as an ordinary React SPA carrying no plans** ([fixture.md](fixture.md), [plan.md](plan.md) §8 D9) | The author |
+| ~~Target repository (§15, Q1)~~ | — | **Settled 2026-09-21: `randadam/tudu`, seeded at `bf25ac6` as an ordinary React SPA carrying no plans** ([fixture.md](fixture.md), [plan.md](plan.md) §8 D9) | The author |
 | Where the prototype ends (§15, Q2) | — | Phase 8 · phase 6 · phase 7 | The author |
 | Benchmark set contents | 5 | Depends on the target repo | Chosen with the repo |
 | Which questions are promoted to Jev, and when | 5–8 | Severity first · then verify-failure and conflict triage if severity's agreement holds · none | The observed agreement rate and confidence distribution from the shadow track, not a phase boundary |
@@ -662,7 +662,7 @@ recorded here, struck through with the decision, per the convention in CLAUDE.md
 1. ~~**Which repository is the prototype target?**~~ **Answered 2026-09-21: `randadam/tudu`**
    (renamed from `aib` the same day), **seeded by hand the same day as a purpose-built fixture: a
    to-do app.** Simple enough to seed in a day, open-ended enough to keep adding features to.
-   **Seeded at `592f4de` — an ordinary React SPA, carrying no plans by design**
+   **Seeded at `bf25ac6` — an ordinary React SPA, carrying no plans by design**
    ([plan.md](plan.md) §8 D9): what it should become is produced through orc rather than handed to
    it. TypeScript + pnpm, so the guard list and pre-baked image plan hold as written. The original
    question, for the record:

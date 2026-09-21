@@ -11,9 +11,9 @@ under `--mode rpc`. 04-attach came back `forked`, which revised D4's *mechanism*
 `orc attach` is a client of the runner, not a second Pi process. `spikes/FINDINGS.md` is the record,
 and its "What phase 1 should carry forward" section is the part to read before building.
 
-**`randadam/tudu` is seeded** at `592f4de`: an ordinary React SPA, **carrying no plans by design**
+**`randadam/tudu` is seeded** at `bf25ac6`: an ordinary React SPA, **carrying no plans by design**
 (D9) — what it should become is produced through orc, not written by hand. Phase 1 pins that commit
-and binds to `pnpm test`: 46 tests, 3.6s, no services. **The next work item is phase 1 slice 1.0**,
+and binds to `pnpm test`: 46 tests, ~4s, no services. **The next work item is phase 1 slice 1.0**,
 the pnpm workspace scaffold, which needs no seed.
 
 ---
@@ -85,7 +85,7 @@ These decided several arguments each, and are the ones to reason from when somet
 ## The one thing blocking a start
 
 **Nothing waits on a decision, and nothing waits on the seed.** Phase 0 is complete and
-**`randadam/tudu` is seeded** at `592f4de` per [docs/fixture.md](docs/fixture.md). Of the ten §15
+**`randadam/tudu` is seeded** at `bf25ac6` per [docs/fixture.md](docs/fixture.md). Of the ten §15
 questions only Q2 (phase 6 or phase 8 as the stop) is open, and it sizes phases 7–8 rather than
 blocking them.
 

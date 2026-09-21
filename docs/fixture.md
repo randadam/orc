@@ -1,7 +1,8 @@
 # The `tudu` fixture — what the target repository is
 
 `randadam/tudu` is the prototype's target repository ([phases.md](phases.md) §15 Q1), seeded by hand
-on 2026-09-21 at `592f4de`.
+on 2026-09-21 at `592f4de` and **pinned at `bf25ac6`** since the author's pnpm fix landed on
+2026-09-22.
 
 **This document describes the repository as it exists. It contains no plans.** That is deliberate
 ([plan.md](plan.md) §8 D9): `tudu` is treated as an ordinary existing app that orc is pointed at,
@@ -38,8 +39,9 @@ confound the measurement phase 6 exists to take.
 ```
 tudu/
   package.json  pnpm-lock.yaml  pnpm-workspace.yaml
-  package-lock.json          also present — see §5
-  .github/workflows/ci.yml   lint, typecheck, test:coverage, build
+  .github/workflows/ci.yml   lint, typecheck, test:coverage, build — on PRs, and on main after merge
+  .githooks/                 pre-commit: lint + typecheck; pre-push: the full suite
+  scripts/check.sh           all four checks in CI's order, every one run, non-zero if any failed
   index.html  vite.config.ts  eslint.config.js  tsconfig*.json
   src/
     App.tsx                  + App.test.tsx
@@ -72,14 +74,16 @@ test:coverage  vitest run --coverage
 
 ## 3. The baseline
 
-Verified at `592f4de` on 2026-09-21, from a clean clone:
+Verified at `bf25ac6` on 2026-09-22, by running it:
 
 1. `pnpm install --frozen-lockfile` succeeds.
-2. **`pnpm test` exits 0 with no services running: 46 tests, 3.6s.** This is the fast suite
-   prevalidation discovers and `testCmd` binds to.
-3. `pnpm lint`, `pnpm typecheck` and `pnpm build` all exit 0.
+2. **`pnpm test` exits 0 with no services running: 46 tests across 7 files, ~4s.** This is the fast
+   suite prevalidation discovers and `testCmd` binds to.
+3. `pnpm lint`, `pnpm typecheck` and `pnpm build` all exit 0; `pnpm check` runs all four in CI's
+   order and reports every failure rather than only the first.
 
-The repository's own CI asserts the same four, so the baseline cannot silently rot.
+CI asserts the same on every pull request and on `main` after a merge, and the `pre-push` hook runs
+them before a branch leaves the machine, so the baseline cannot silently rot.
 
 ---
 
@@ -94,7 +98,7 @@ if it arrives, is planned through orc rather than here.
   the honest meaning of end-to-end.
 - No `test:unit`, no `coverage` script emitting a machine-readable reporter, no `lint --format json`,
   no metrics module, no deploy script.
-- No `packageManager` or `engines.node` field.
+- No `engines.node` field. (`packageManager` is `pnpm@10.33.0`.)
 
 Some phase acceptance criteria assume things in this list exist — phase 2 builds sandbox images from
 a repository's `.devcontainer/` (D5), and phase 7 runs integration tests against a compose sidecar
@@ -105,12 +109,11 @@ and §5 item 2 is where that is tracked.
 
 ## 5. Open items
 
-1. **The repository is npm-driven, against the pnpm rule.** `package-lock.json` is committed beside
-   `pnpm-lock.yaml`, and `.github/workflows/ci.yml` runs `npm ci` and `npm run`. This matters beyond
-   tidiness: [environments.md](environments.md) §6's guard list assumes pnpm semantics — lifecycle
-   scripts blocked on install, `minimumReleaseAge` holding back same-day versions — and an agent
-   reaching for npm inside the sandbox gets none of them, silently. **Being fixed by the author;
-   re-pin the commit in [phases/phase-1.md](phases/phase-1.md) §1.3 when it lands.**
+1. ~~**The repository is npm-driven, against the pnpm rule.**~~ **Fixed by the author at
+   `bf25ac6`, 2026-09-22.** `package-lock.json` is gone, CI installs with
+   `pnpm install --frozen-lockfile` and runs `pnpm` scripts, and `packageManager` pins
+   `pnpm@10.33.0`. The guard list in [environments.md](environments.md) §6 now rests on pnpm
+   semantics that actually hold. Re-pinned in [phases/phase-1.md](phases/phase-1.md) §1.3.
 2. **Phases 2 and 7 assume repository features that do not exist** (§4). Neither affects phase 1.
    Under D9 the answer is not written here; it is planned when the phase is reached.
 3. **`pnpm-workspace.yaml` carries `allowBuilds: { esbuild: false }`**, where
