@@ -71,8 +71,10 @@ These decided several arguments each, and are the ones to reason from when somet
 
 ## The one thing blocking a start
 
-**Which repository the POC targets.** It determines the devcontainer, the toolchain, and `testCmd`.
-S0 needs it. Everything else can proceed without an answer.
+**Which repository the POC targets** — now named: **`randadam/aib`** (phases.md §15 Q1). It
+determines the devcontainer, the toolchain, and `testCmd`. What remains blocking is *verifying* it:
+sessions need read access to the repo, and its fit against the TypeScript + pnpm assumption has
+not been checked. Do that check before writing the phase 1 plan.
 
 Two architectural questions remain genuinely open but do not block: the model backend (plan.md §9)
 and target scale.

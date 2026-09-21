@@ -12,7 +12,7 @@ kill criterion. If spike 1 fails, stop and redesign the tool-policy model before
 
 | Question | Assumed here | If the answer differs |
 | --- | --- | --- |
-| Q5 — Pi version | **`@earendil-works/pi-coding-agent@0.85.1`**, latest on npm as of 2026-09-18. Pinned exactly; every later phase pins the same. | Re-run all six spikes against the chosen version. They take under an hour. |
+| Q5 — Pi version | **`@earendil-works/pi-coding-agent@0.86.1`**, latest stable on npm as of 2026-09-21 (published 2026-09-20). **Answered:** "latest stable" as a pinning policy — pin exactly, every later phase pins the same, re-pin deliberately and re-run the spikes. Pi shipped two minor versions in the three days this plan has existed. | Re-pinning re-runs all six spikes. They take under an hour. |
 | Q6 — environment | Node 22 (22.22 verified here), pnpm, `tsx`. **No Docker needed** — phase 0 drives Pi as a bare subprocess. | Nothing in this phase changes. |
 | Q7 — credential | `ANTHROPIC_API_KEY` in the environment, direct API. Model `claude-haiku-4-5` — it is a spike; cost is the point. | A different provider changes only `--provider`/`--model` flags. |
 | Q9 — who executes | Acceptance is **executable** regardless: every spike exits 0/1 and prints one finding line. Costs nothing extra and serves both readings of Q9. | — |
@@ -31,7 +31,7 @@ recorded instead of stalling the run.
 
 ```
 spikes/
-  package.json            pi-coding-agent@0.85.1, tsx, typebox — nothing else
+  package.json            pi-coding-agent@0.86.1, tsx, typebox — nothing else
   lib/rpc.ts              ≤60 lines: spawn pi, LF-delimited JSONL in/out, awaitEvent(type), timeout
   01-veto/      ext.ts run.ts
   02-drive/     run.ts
@@ -256,7 +256,7 @@ cite it:
 ```
 ## 01-veto
 VETO: pass — {block:true} from tool_call prevents execution; reason reaches model: yes
-script: spikes/01-veto/run.ts   pi: 0.85.1   model: claude-haiku-4-5   date: 2026-09-XX
+script: spikes/01-veto/run.ts   pi: 0.86.1   model: claude-haiku-4-5   date: 2026-09-XX
 ```
 
 Spike 4 is written by hand after observation, same shape.
@@ -283,7 +283,7 @@ roughly fifteen Haiku turns.
 
 ## 6. Open items
 
-1. **Q5 must be answered before the findings are trusted.** Spikes against 0.85.1 say nothing about
+1. **Q5 must be answered before the findings are trusted.** Spikes against 0.86.1 say nothing about
    another version. If the pin changes, re-run.
 2. ~~`defaultProjectTrust` values are not confirmed here.~~ **Closed:** `"ask"` | `"always"` |
    `"never"`, global settings only; and non-interactive modes never show the prompt (Pi settings

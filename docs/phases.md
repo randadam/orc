@@ -635,7 +635,12 @@ Each is settled in the named phase's detailed plan, not here.
 These are not answerable from the existing docs, and several change the plan above. Answers get
 recorded here, struck through with the decision, per the convention in CLAUDE.md.
 
-1. **Which repository is the prototype target?** The only blocking unknown ([plan.md](plan.md) §9).
+1. **Which repository is the prototype target?** **Answered 2026-09-21: `randadam/aib`.** Not yet
+   struck through, because the answer is unverified: this session cannot read the repo (the Claude
+   GitHub App's access does not include it), so its fit against the TypeScript + pnpm assumption
+   ([poc.md](poc.md) §3, [environments.md](environments.md) §6) is unchecked. If `aib` is not
+   TypeScript/pnpm, the guard list and the pre-baked image plan change before phase 1 — that check
+   is the first thing to do once access is granted. The original question, for the record:
    Three shapes, with different costs:
    - *A purpose-built fixture repo*: small TypeScript service, fast pnpm test suite, a devcontainer
      you control, and seeded feature requests. Deterministic and cheap to benchmark; artificial, so it
@@ -659,10 +664,12 @@ recorded here, struck through with the decision, per the convention in CLAUDE.md
    (answerable at phase 5). The order above answers the second first because planning comes before
    execution. If the Haiku question matters more, phase 5 can be thinned to a minimum and phase 6
    pulled forward.
-5. **Which Pi version are you tracking?** A pinned release or HEAD. Pi is named as a fast-moving
-   upstream ([plan.md](plan.md) §6); the phase 0 spikes are only valid against the version phases 1–8
-   pin, so it needs to be the same one. *(Latest on npm as of 2026-09-18 is `0.85.1`;
-   [phases/phase-0.md](phases/phase-0.md) assumes that pin pending your answer.)*
+5. ~~**Which Pi version are you tracking?**~~ **Answered 2026-09-21: latest stable — as a pinning
+   policy, not a floating version.** Pin the latest stable release at the start of phase 0; every
+   later phase pins the same; re-pinning is a deliberate act that re-runs the phase 0 spikes. Never
+   `latest` in a manifest. Evidence for why this matters: between 2026-09-18 and 2026-09-21 Pi went
+   `0.85.1 → 0.86.0 → 0.86.1` — two minor releases in three days. **Pinned: `0.86.1`**
+   ([phases/phase-0.md](phases/phase-0.md) §1).
 6. **What is the development environment?** Docker available locally (Desktop, or Linux with
    rootless?), and is the `devcontainer` CLI acceptable as a build-time dependency? Phase 2 assumes
    both.
