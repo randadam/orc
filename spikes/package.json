@@ -6,6 +6,11 @@
   "scripts": {
     "spike": "./run-all.sh",
     "00-harness": "tsx 00-harness/run.ts",
+    "01-veto": "tsx 01-veto/run.ts",
+    "02-drive": "tsx 02-drive/run.ts",
+    "03-submit": "tsx 03-submit/run.ts",
+    "04-attach": "tsx 04-attach/run.ts",
+    "05-events": "tsx 05-events/run.ts",
     "06-trust": "tsx 06-trust/run.ts",
     "typecheck": "tsc --noEmit"
   },

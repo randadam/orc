@@ -6,6 +6,11 @@ export interface Finding {
   script: string;
 }
 
+/** The finding line a spike reports when the model never answered, so no verdict is implied. */
+export function modelFailureLine(spike: string, error: string): string {
+  return `${spike}: fail — no verdict: the model call never succeeded (${error})`;
+}
+
 /** Print a finding and exit 0 on pass, 1 on fail. Every spike ends here. */
 export function report(finding: Finding): never {
   console.log(`\n## ${finding.spike}`);

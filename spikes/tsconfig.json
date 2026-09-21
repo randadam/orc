@@ -15,6 +15,11 @@
   "include": [
     "lib",
     "00-harness",
+    "01-veto",
+    "02-drive",
+    "03-submit",
+    "04-attach",
+    "05-events",
     "06-trust"
   ]
 }

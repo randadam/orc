@@ -3,11 +3,12 @@
 Read this first. It exists so a session with no prior context can pick up the design without
 re-deriving it or re-litigating settled questions.
 
-**Status: design complete; phase 0 underway.** Twelve documents, plus `spikes/` — the phase 0
-harness and the two checks that need no API key (`00-harness`, `06-trust`) are written and passing;
-`spikes/FINDINGS.md` is the running record. The four model-backed spikes and the manual attach spike
-are not done, so **the kill criterion is still unevaluated** — see
-[docs/phases/phase-0.md](docs/phases/phase-0.md) §5.
+**Status: design complete; phase 0 underway.** Twelve documents, plus `spikes/` — all seven scripts
+are written and typecheck, and the two that need no API key (`00-harness`, `06-trust`) pass;
+`spikes/FINDINGS.md` is the running record. The four model-backed spikes need a key
+(`ANTHROPIC_KEY` in a git-ignored `spikes/.env`, then `./run-all.sh`) and `04-attach` needs a person
+at two terminals, so **the kill criterion is still unevaluated** — writing the script did not
+evaluate it. See [docs/phases/phase-0.md](docs/phases/phase-0.md) §5.
 
 ---
 

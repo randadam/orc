@@ -1,14 +1,11 @@
+import { Checks } from "../lib/check.ts";
 import { JsonlDecoder } from "../lib/framing.ts";
 import { Pi } from "../lib/rpc.ts";
 import { report } from "../lib/finding.ts";
 import { cleanupTmp, tmp } from "../lib/tmp.ts";
 
-const failures: string[] = [];
-
-function check(name: string, ok: boolean): void {
-  if (!ok) failures.push(name);
-  console.log(`  ${ok ? "ok  " : "FAIL"}  ${name}`);
-}
+const checks = new Checks();
+const check = (name: string, ok: boolean) => checks.ok(name, ok);
 
 function framing(): void {
   console.log("framing:");
@@ -68,10 +65,10 @@ try {
 
 report({
   spike: "00-harness",
-  pass: failures.length === 0,
+  pass: checks.passed,
   line:
-    failures.length === 0
+    checks.passed
       ? "HARNESS: pass — LF-only framing holds across chunk, CRLF and U+2028/9 cases; pi --mode rpc answers get_state with no API key"
-      : `HARNESS: fail — ${failures.join("; ")}`,
+      : `HARNESS: fail — ${checks.failed.join("; ")}`,
   script: "spikes/00-harness/run.ts",
 });

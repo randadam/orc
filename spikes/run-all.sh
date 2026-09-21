@@ -13,6 +13,9 @@ SPIKES=(
   "06-trust:no"
 )
 
+# A spike that cannot run exits 2, so a skip never reads as a pass or a failure.
+SKIP_EXIT=2
+
 echo "=== typecheck ==="
 if npx tsc --noEmit; then
   echo "  ok"
@@ -22,7 +25,12 @@ else
 fi
 echo
 
-have_key="${ANTHROPIC_API_KEY:-}"
+# Same resolution order as lib/env.ts: the environment first, then spikes/.env.
+have_key="${ANTHROPIC_API_KEY:-${ANTHROPIC_KEY:-}}"
+if [ -z "$have_key" ] && [ -f .env ]; then
+  have_key="$(sed -n 's/^[[:space:]]*\(export[[:space:]]\+\)\?ANTHROPIC_\(API_\)\?KEY[[:space:]]*=[[:space:]]*//p' .env | tail -1)"
+fi
+
 results=()
 status=0
 
@@ -35,13 +43,17 @@ for entry in "${SPIKES[@]}"; do
     continue
   fi
   if [ "$needs_model" = "yes" ] && [ -z "$have_key" ]; then
-    results+=("$name|SKIP (no ANTHROPIC_API_KEY)")
+    results+=("$name|SKIP (no key: set ANTHROPIC_KEY in spikes/.env)")
     continue
   fi
 
   echo "=== $name ==="
-  if timeout 180 npx tsx "$name/run.ts"; then
+  timeout 600 npx tsx "$name/run.ts"
+  code=$?
+  if [ "$code" -eq 0 ]; then
     results+=("$name|pass")
+  elif [ "$code" -eq "$SKIP_EXIT" ]; then
+    results+=("$name|SKIP (the spike declined to run)")
   else
     results+=("$name|FAIL")
     status=1
@@ -55,8 +67,8 @@ for row in "${results[@]}"; do
 done
 
 echo
-echo "04-attach requires a person at a terminal; see docs/phases/phase-0.md §3.4."
+echo "04-attach needs a person at two terminals: npm run 04-attach (see docs/phases/phase-0.md §3.4)."
 if [ -z "$have_key" ]; then
-  echo "Model-backed spikes were skipped. Set ANTHROPIC_API_KEY and re-run to answer them."
+  echo "Model-backed spikes were skipped. Put ANTHROPIC_KEY=sk-... in spikes/.env and re-run."
 fi
 exit $status
