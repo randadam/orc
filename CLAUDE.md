@@ -141,3 +141,45 @@ these docs are struck through with the answer rather than deleted, which is the 
   so verify a reference resolves before trusting it.
 - Prose over bullets where reasoning matters. The reasoning is the valuable part — several of these
   decisions replaced a plausible wrong answer, and the record of *why* is what stops it coming back.
+
+---
+
+## How work is cut
+
+**Plan in small slices that are independently deliverable and verifiable end to end.** This applies
+to every phase plan, to orc's own implementation, and to the benchmark features — the same rule at
+every level.
+
+A slice qualifies when all three hold:
+
+1. **Deliverable on its own.** It merges and is useful without waiting on sibling slices. If it only
+   makes sense once three others land, it is a fragment, not a slice — recut.
+2. **Verifiable end to end** by something that exits 0 or 1: a test, a script, a `verify` command.
+   Not "reviewed and looks right." A slice with no executable check is not done being planned.
+3. **Small enough for a small context window.** The spec, the code it touches and its tests should
+   be readable in one session without compaction. This is a hard constraint, not a preference: the
+   implementation tier is Haiku, implementation starts from a cleared context hydrated from the
+   spec, and a slice that overflows that context fails in ways that look like model weakness and
+   are actually planning weakness.
+
+When a piece of work does not fit, the answer is to cut it smaller or to add a dependency edge — not
+to make the slice bigger and hope. Phase 0's spikes already follow this shape (one script, one
+question, one exit code each); every phase plan from phase 1 on is written the same way.
+
+---
+
+## Code conventions
+
+**Documentation lives in `docs/`. Comments are not documentation.** Code comments are limited to
+exactly two kinds:
+
+1. **Docstrings** — JSDoc on exported symbols: what it is, what it takes, what it returns.
+2. **One-liners about critical gotchas** — a single line where the next reader would otherwise
+   break something: an ordering constraint, a non-obvious invariant, a thing that looks wrong on
+   purpose.
+
+Nothing else. No paragraphs explaining how a block of code works — if it needs a paragraph, the code
+needs restructuring or the explanation belongs in a doc. No design decisions inlined as comments —
+decisions live in [docs/plan.md](docs/plan.md) §8, and the reasoning behind a module lives in the
+doc that specifies it. A comment that restates the code is noise; a comment that explains a
+decision is a doc in the wrong place.
