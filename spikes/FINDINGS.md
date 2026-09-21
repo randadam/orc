@@ -16,11 +16,16 @@ anywhere: `lib/rpc.ts` is the only place a key is handed to a process, which is 
 | --- | --- |
 | 00-harness | pass |
 | 01-veto | **pass** — the kill criterion is answered |
-| 02-drive | answered — one check still measured on a wrong proxy; fixed, needs a third run |
+| 02-drive | **pass** |
 | 03-submit | **pass** |
 | 04-attach | **forked** — observed 2026-09-21; D4's mechanism changes |
 | 05-events | pass |
 | 06-trust | pass |
+
+**Phase 0 is complete as of 2026-09-21.** `./run-all.sh` exits 0 with all six passing; 04-attach was
+performed by hand; every [phase-0.md](../docs/phases/phase-0.md) §5 exit criterion is met. Nothing
+here is imported by anything, and nothing here should be — phase 1's runner rewrites `lib/rpc.ts`
+with tests.
 
 **Two of the six took more than one run**, both because the spike was wrong rather than Pi. That is
 what the spikes are for, and the mistakes are written up rather than quietly fixed — each one is a
@@ -90,27 +95,29 @@ need to.
 
 ## 02-drive
 
-Second run, 2026-09-21: `DRIVE: fail — abort→agent_end in 0.0s; resume via startup flag; context
-survives: yes`. **Everything §3.2 actually asks was observed. The one remaining `fail` is a wrong
-proxy in the check, not a failure**, and a third run is outstanding to retire it.
+```
+DRIVE: pass — abort→agent_end in 0.0s; resume via startup flag; context survives: yes
+script: spikes/02-drive/run.ts   pi: 0.86.1   model: claude-haiku-4-5   date: 2026-09-21
+```
 
-What the run establishes:
+What it establishes:
 
-- **Abort works, and it is immediate.** `agent_end` arrived **0.0s** after the abort. All ten
-  `bash` calls came back `Command aborted` and, by the model's own account on resume, *"0 sleeps
-  completed"* — the abort caught every one of them in flight.
+- **Abort works, and it is immediate.** `agent_end` arrived **0.0s** after the abort, and **10 of
+  10** tool executions ended aborted. By the model's own account on resume, *"0 sleeps completed"* —
+  the abort caught every one of them in flight.
 - **`--session <path>` IS honoured under `--mode rpc`.** The startup flag worked on the first try, so
   `switch_session` was never needed. This is the open question §3.2 step 4 existed to settle
   ([phase-0.md](../docs/phases/phase-0.md) §6 item 4), and it means phase 1's resume is a flag.
 - **Context survives the resume.** `messageCount` 14, and the follow-up turn answered about the
   interrupted work rather than starting fresh.
 
-**Pi runs sibling tool calls concurrently by default.** Haiku emitted all ten `bash` calls in one
-assistant message and all ten `tool_execution_start`s fired together. That is what broke the check:
-it asserted `tool_execution_start < 10` as a stand-in for §3.2's *"it did not run all ten sleeps —
-check wall clock"*, and under parallel execution a start count measures nothing about work done. The
-check now counts **tool executions that ended aborted**, which is the effect itself rather than a
-proxy for it. Phase 1 should take the parallelism as a finding in its own right: a per-tool
+It took three runs, and the second one's failure is the more instructive of the two.
+**Pi runs sibling tool calls concurrently by default** — Haiku emitted all ten `bash` calls in one
+assistant message and all ten `tool_execution_start`s fired together. The check asserted
+`tool_execution_start < 10` as a stand-in for §3.2's *"it did not run all ten sleeps — check wall
+clock"*, and under parallel execution a start count measures nothing about work done. It now counts
+**tool executions that ended aborted**, which is the effect itself rather than a proxy for it.
+Phase 1 should take the parallelism as a finding in its own right: a per-tool
 `executionMode: "sequential"` exists, and `tool_call` preflights siblings sequentially before they
 execute concurrently.
 
@@ -143,8 +150,8 @@ script: spikes/03-submit/run.ts   pi: 0.86.1   model: claude-haiku-4-5   date: 2
 ```
 
 Five fresh processes, five single `submit_result` calls, five argument sets valid against the schema
-`ext.ts` registered, and no follow-up assistant message in any of them. 4.7s–10.5s, median 5.3s. The
-JSON fallback was never needed. **`ask()` can be built on a terminating tool**, and it costs one
+`ext.ts` registered, and no follow-up assistant message in any of them. Two five-run batches came in
+at medians of 5.3s and 6.6s, spread 4.7s–10.5s. The JSON fallback was never needed. **`ask()` can be built on a terminating tool**, and it costs one
 turn rather than two.
 
 It took two runs. The first reported `terminate skips follow-up: no`, which was wrong: the check
@@ -217,7 +224,9 @@ EVENTS: usage in message_update; fields {input,output,cacheRead,cacheWrite,total
 script: spikes/05-events/run.ts   pi: 0.86.1   model: claude-haiku-4-5   date: 2026-09-21
 ```
 
-86 records over one two-tool turn. What phase 1's telemetry can be built on, by event:
+The shape below is from one two-tool turn of 86 records; counts vary with response length (a second
+run gave 75 records and 47 `message_update`s), the fields do not. What phase 1's telemetry can be
+built on, by event:
 
 | Event | count | usage | model | provider | toolName | toolCallId | args |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -232,7 +241,8 @@ script: spikes/05-events/run.ts   pi: 0.86.1   model: claude-haiku-4-5   date: 2
 Four things phase 1 should take from it:
 
 - **`turn_end` is the cheap place to bill from.** It carries `usage`, `model` and `provider`
-  together, once per turn, where `message_update` carries usage 58 times for the same turn.
+  together, **twice** over this turn, where `message_update` carried usage fifty-odd times for the
+  same work.
 - **`usage` has a field the docs do not list: `cacheWrite1h`.** The full set observed is
   `input, output, cacheRead, cacheWrite, totalTokens, cost, cacheWrite1h`. A cost calculation that
   enumerates fields will silently miss it; one that reads `cost.total` will not.
@@ -277,6 +287,24 @@ one workspace the runner is starting.
 
 ---
 
+## What phase 1 should carry forward
+
+Six things here are not findings about the questions asked, but traps the runner will hit anyway:
+
+1. **Wait on `agent_settled`, not `agent_end`.** `agent_end` is one low-level run and may be
+   followed by a retry, a compaction or a queued continuation.
+2. **An `abort` on a settled session emits nothing.** Wait on the command response; treat an
+   already-settled session as already aborted.
+3. **Sibling tool calls execute concurrently.** `tool_call` preflights them sequentially, then they
+   run in parallel. A gate assuming one in-flight tool at a time is wrong.
+4. **`message_start` fires for tool-result messages too.** Read `message.role`; never count turns by
+   counting the event.
+5. **Bill from `turn_end`**, which carries `usage`, `model` and `provider` together once per turn,
+   and read `cost.total` rather than enumerating usage fields — there is an undocumented
+   `cacheWrite1h` in there.
+6. **Assert the trust marker loaded.** The default declines silently, so a misconfigured runner runs
+   agents without the project's extensions and nothing says so.
+
 ## Open items
 
 1. ~~**The four model-backed spikes are unwritten, not failed.**~~ **Closed 2026-09-21:** all five
@@ -302,9 +330,8 @@ one workspace the runner is starting.
 6. ~~**`--session` under `--mode rpc` is unanswered.**~~ **Closed: it is honoured.** 02-drive
    resumed via the startup flag on the first attempt and never needed `switch_session`. Phase 1's
    resume is a flag.
-7. **One re-run is outstanding: 02-drive.** Everything §3.2 asks has been observed, but the abort
-   check was measuring the wrong thing and its replacement has not itself been run. **Exit
-   criterion 1 is not met until `./run-all.sh` comes back green end to end.**
+7. ~~**One re-run is outstanding: 02-drive.**~~ **Closed: `./run-all.sh` is green end to end**, all
+   six passing, 2026-09-21. Exit criterion 1 is met.
 8. **Pi runs sibling tool calls concurrently by default.** Recorded under 02-drive. It falls out of
    the bug rather than out of any spike's question, and it bears on the tool gate: `tool_call`
    preflights siblings sequentially, then they execute in parallel, so a gate that assumes one

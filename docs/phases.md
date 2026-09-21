@@ -66,6 +66,9 @@ listed in §12 so the seams that keep them cheap stay visible, and no more.
 ## 3. Phase 0 — spikes: is Pi the harness we think it is?
 
 > Detailed plan: [phases/phase-0.md](phases/phase-0.md).
+> **Complete, 2026-09-21.** All six spikes green; findings in `spikes/FINDINGS.md`. It is the
+> harness we think it is — with one exception, attach, which changed D4's mechanism (§8 D4 in
+> [plan.md](plan.md)) and nothing else.
 
 **Goal.** Falsify the load-bearing assumptions about Pi before anything is built on them. Nothing
 from this phase is kept as code.
@@ -89,10 +92,13 @@ question with a yes or no you can reproduce.
 
 **Acceptance.**
 
-1. A `bash` call is blocked from `tool_call` and demonstrably never executes.
-2. A session is prompted, aborted mid-turn, and resumed from its JSONL, from a script.
-3. One structured-output mechanism works reliably enough to build `ask()` on.
+1. A `bash` call is blocked from `tool_call` and demonstrably never executes. **Met.**
+2. A session is prompted, aborted mid-turn, and resumed from its JSONL, from a script. **Met** —
+   abort lands in 0.0s and `--session <path>` is honoured under `--mode rpc`.
+3. One structured-output mechanism works reliably enough to build `ask()` on. **Met** — a
+   terminating tool, 5/5, and `terminate: true` skips the follow-up call.
 4. Written findings for the attach, usage and trust questions, each one sentence and one script.
+   **Met.**
 
 **Kill criterion.** If (1) fails, stop. The tool-policy model in [plan.md](plan.md) §4 changes before
 any package is written. If (2) or (3) fails, the SDK surface changes but the design survives.
