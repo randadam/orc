@@ -167,6 +167,26 @@ When a piece of work does not fit, the answer is to cut it smaller or to add a d
 to make the slice bigger and hope. Phase 0's spikes already follow this shape (one script, one
 question, one exit code each); every phase plan from phase 1 on is written the same way.
 
+### Before starting a slice
+
+Check the repository's state first, every time, and rebase if it has moved:
+
+1. **`git fetch origin`**, then read `origin/main` — not the local `main`, which can be stale.
+2. **Confirm the working tree is clean** (`git status`). Commit or stash anything pending; never
+   rebase over uncommitted changes.
+3. **Each slice gets its own branch, cut from `origin/main`.** If the slice branch is already open
+   and `origin/main` has moved past its base, **rebase onto `origin/main`** — do not merge `main`
+   into the slice. Push with `--force-with-lease`, never bare `--force`, and only ever on your own
+   slice branch. A rebase conflict that is a design question rather than a mechanical one is
+   recorded in the slice, not resolved by guesswork.
+4. **After any rebase, re-run the slice's executable check before continuing.** The base moved;
+   green before the rebase says nothing about green after it — the same rule the workflow applies
+   to its own merges ([docs/poc-v2.md](docs/poc-v2.md) §2).
+
+Until [PR #1](https://github.com/randadam/orc/pull/1) merges, `main` holds only the root commit and
+the design branch is the base; this rule applies to slice branches from the moment `main` carries
+the design.
+
 ---
 
 ## Code conventions
