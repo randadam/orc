@@ -17,7 +17,7 @@ SPIKES=(
 SKIP_EXIT=2
 
 echo "=== typecheck ==="
-if npx tsc --noEmit; then
+if pnpm exec tsc --noEmit; then
   echo "  ok"
 else
   echo "  FAIL"
@@ -48,7 +48,7 @@ for entry in "${SPIKES[@]}"; do
   fi
 
   echo "=== $name ==="
-  timeout 600 npx tsx "$name/run.ts"
+  timeout 600 pnpm exec tsx "$name/run.ts"
   code=$?
   if [ "$code" -eq 0 ]; then
     results+=("$name|pass")
@@ -67,7 +67,7 @@ for row in "${results[@]}"; do
 done
 
 echo
-echo "04-attach needs a person at two terminals: npm run 04-attach (see docs/phases/phase-0.md §3.4)."
+echo "04-attach needs a person at two terminals: pnpm 04-attach (see docs/phases/phase-0.md §3.4)."
 if [ -z "$have_key" ]; then
   echo "Model-backed spikes were skipped. Put ANTHROPIC_KEY=sk-... in spikes/.env and re-run."
 fi

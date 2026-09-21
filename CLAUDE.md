@@ -3,12 +3,13 @@
 Read this first. It exists so a session with no prior context can pick up the design without
 re-deriving it or re-litigating settled questions.
 
-**Status: design complete; phase 0 underway.** Twelve documents, plus `spikes/` — all seven scripts
-are written and typecheck, and the two that need no API key (`00-harness`, `06-trust`) pass;
-`spikes/FINDINGS.md` is the running record. The four model-backed spikes need a key
-(`ANTHROPIC_KEY` in a git-ignored `spikes/.env`, then `./run-all.sh`) and `04-attach` needs a person
-at two terminals, so **the kill criterion is still unevaluated** — writing the script did not
-evaluate it. See [docs/phases/phase-0.md](docs/phases/phase-0.md) §5.
+**Status: design complete; phase 0 all but finished.** Twelve documents, plus `spikes/` — every
+spike has run. **The kill criterion is answered: 01-veto passed, so the tool-policy model stands and
+phase 1 may proceed.** 04-attach came back `forked`, which revised D4's *mechanism* (not its intent)
+— `orc attach` is a client of the runner, not a second Pi process. 02-drive and 03-submit failed on
+bugs in the spike scripts rather than on Pi; both are fixed and **await a re-run**, which is all that
+is left of phase 0. `spikes/FINDINGS.md` is the record; see
+[docs/phases/phase-0.md](docs/phases/phase-0.md) §5.
 
 ---
 
@@ -204,6 +205,14 @@ Check the repository's state first, every time, and rebase if it has moved:
 ---
 
 ## Code conventions
+
+**pnpm, never npm or npx.** `pnpm install`, `pnpm <script>`, `pnpm exec <bin>`, `pnpm dlx` for a
+one-off. This is not a style preference: [environments.md](docs/environments.md) §6 makes pnpm's own
+defaults load-bearing — dependency lifecycle scripts do not run on install, and `minimumReleaseAge`
+holds back versions published in the last day — and the POC's single allowed workspace mutation is
+*a package installed with pnpm*. An `npm install` writes a `package-lock.json` nobody reads and
+installs with lifecycle scripts enabled, which quietly voids the guarantee the sandbox design rests
+on. `npx` is the same hazard in one line.
 
 **Documentation lives in `docs/`. Comments are not documentation.** Code comments are limited to
 exactly two kinds:

@@ -29,18 +29,23 @@ whatever they contradict. Nothing below is worth building on an assumption phase
 | Q9 — who executes | Acceptance is executable: `pnpm accept:phase1` exits 0 or 1 (§10). | — |
 | Q10 — single user | No identity anywhere. Escalation answers carry an action and a note, nothing about who. | — |
 
-### 1.2 Phase 0 findings assumed
+### 1.2 Phase 0 findings
 
-Replace this table with the quoted finding lines once `spikes/FINDINGS.md` exists.
+Phase 0 ran on 2026-09-21. `spikes/FINDINGS.md` is the record; this table quotes it, and flags the
+two answers phase 1 is still assuming.
 
-| Spike | Assumed finding | What in this plan rests on it |
+| Spike | Finding | What in this plan rests on it |
 | --- | --- | --- |
-| 01 veto | `{ block: true, reason }` from `tool_call` prevents execution; the reason reaches the model. | The whole of `@orc/pi`'s gate (§6.3), acceptance 2. |
-| 02 drive | `prompt` → `agent_end` and `abort` → `agent_end` work from a script. Resume mechanism irrelevant here — phase 1 never resumes a session. | The runner's control loop (§6.1). |
-| 03 submit | A registered tool with a schema is called 5/5 and `terminate: true` skips the follow-up call. | `ask()` (§6.4), acceptance 1. |
-| 04 attach | Whatever it found — phase 1 has no `orc attach`. | Nothing. |
-| 05 events | `message_update` carries `usage` `{input, output, cacheRead, cacheWrite, totalTokens, cost}`; `turn_start`/`turn_end` carry `turnIndex`; tool start/end pair on `toolCallId`; **tool timing is derived from the runner's clock**. | Turn counting, turn spans and provisional token counts (§7). |
-| 06 trust | A `project_trust` handler returning `{ trusted: "yes" }` loads project config headlessly. | `@orc/pi` answers trust by policy (§6.3). If only the `defaultProjectTrust` setting works, the runner writes it into the per-agent `HOME` instead — a ten-line change. |
+| 01 veto | **Confirmed.** `{ block: true, reason }` from `tool_call` prevents execution, and the reason reaches the model. | The whole of `@orc/pi`'s gate (§6.3), acceptance 2. |
+| 02 drive | **Still assumed — re-run outstanding.** `prompt` → `agent_end` works. Abort is unmeasured: the spike aborted an already-idle session. One thing did come out of it — **`abort` on a settled session emits nothing**, so the runner must wait on the response, not on `agent_end`. Resume is irrelevant here; phase 1 never resumes. | The runner's control loop (§6.1). |
+| 03 submit | **Half confirmed.** A registered tool with a schema was called **5/5** with valid arguments, median 6.2s. Whether `terminate: true` skips the follow-up call is **still assumed** — the spike's check was wrong and the re-run is outstanding. `ask()` works either way; only the extra turn's cost is at stake. | `ask()` (§6.4), acceptance 1. |
+| 04 attach | **`forked`** — two Pi processes on one session file do not share it. Phase 1 has no `orc attach`, so nothing here changes; it revised [plan.md](../plan.md) §8 D4's mechanism. | Nothing. |
+| 05 events | **Confirmed, with two corrections.** `usage` also carries **`cacheWrite1h`** beyond the documented set, so read `cost.total` rather than enumerating fields. **`turn_end` carries `usage`, `model` and `provider` together**, once per turn — bill from it, not from the 58 `message_update`s of the same turn. Tool start/end pair on `toolCallId` and **tool timing is derived from the runner's clock**. `turnIndex` on `turn_start`/`turn_end` was **not** checked. | Turn counting, turn spans and provisional token counts (§7). |
+| 06 trust | **Confirmed, and better than assumed.** Three mechanisms work; use **`--approve`**, which is per-run where `defaultProjectTrust` is per-machine. The default silently declines, loading none of the project's `.pi/` — so **the runner must assert the marker loaded**, since trust failing open on "no extensions" is otherwise invisible. | `@orc/pi` answers trust by policy (§6.3). |
+
+One trap 05-events exposed that phase 1's telemetry will hit: **`message_start` fires for tool
+result messages as well as assistant messages**, carrying `toolName` and `toolCallId`. Counting
+assistant turns without reading `message.role` overcounts. It is what broke 03-submit.
 
 Two Pi facts confirmed against the 0.86 docs on 2026-09-21 and relied on beyond phase 0's spikes:
 `pi.registerTool()` works after startup, from any event handler, and new tools are visible

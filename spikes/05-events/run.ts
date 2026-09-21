@@ -97,6 +97,7 @@ try {
   const timed = [...starts.map((s) => s.r), ...pi.ofType("tool_execution_end")];
   timing = timed.some((r) => has(r, "durationMs") || has(r, "duration")) ? "field" : "derived";
 } catch (err) {
+  console.log(`\n${(err as Error).message}\n`);
   checks.ok(`the spike ran to completion — ${(err as Error).message.split("\n")[0]}`, false);
 } finally {
   await pi.close();
