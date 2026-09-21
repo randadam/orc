@@ -3,7 +3,11 @@
 Read this first. It exists so a session with no prior context can pick up the design without
 re-deriving it or re-litigating settled questions.
 
-**Status: design complete, implementation not started.** Twelve documents, no code.
+**Status: design complete; phase 0 underway.** Twelve documents, plus `spikes/` — the phase 0
+harness and the two checks that need no API key (`00-harness`, `06-trust`) are written and passing;
+`spikes/FINDINGS.md` is the running record. The four model-backed spikes and the manual attach spike
+are not done, so **the kill criterion is still unevaluated** — see
+[docs/phases/phase-0.md](docs/phases/phase-0.md) §5.
 
 ---
 
@@ -166,6 +170,35 @@ A slice qualifies when all three hold:
 When a piece of work does not fit, the answer is to cut it smaller or to add a dependency edge — not
 to make the slice bigger and hope. Phase 0's spikes already follow this shape (one script, one
 question, one exit code each); every phase plan from phase 1 on is written the same way.
+
+### Branches and pull requests
+
+**Never commit or push to `main`.** Every change — including a one-line edit to this file — is cut
+as its own branch from `origin/main` and lands through a pull request. `main` moves only by merge.
+
+This binds agent sessions as much as hand edits. An agent that pushes straight to `main` has skipped
+the review step the whole design exists to produce, and it is the one shortcut that cannot be
+audited after the fact: there is no diff to read because there was no proposal. Cut the branch,
+push the branch, open the PR, and say what it contains.
+
+### Before starting a slice
+
+Check the repository's state first, every time, and rebase if it has moved:
+
+1. **`git fetch origin`**, then read `origin/main` — not the local `main`, which can be stale.
+2. **Confirm the working tree is clean** (`git status`). Commit or stash anything pending; never
+   rebase over uncommitted changes.
+3. **Each slice gets its own branch, cut from `origin/main`.** If the slice branch is already open
+   and `origin/main` has moved past its base, **rebase onto `origin/main`** — do not merge `main`
+   into the slice. Push with `--force-with-lease`, never bare `--force`, and only ever on your own
+   slice branch. A rebase conflict that is a design question rather than a mechanical one is
+   recorded in the slice, not resolved by guesswork.
+4. **After any rebase, re-run the slice's executable check before continuing.** The base moved;
+   green before the rebase says nothing about green after it — the same rule the workflow applies
+   to its own merges ([docs/poc-v2.md](docs/poc-v2.md) §2).
+
+[PR #1](https://github.com/randadam/orc/pull/1) merged the design into `main` on 2026-09-21, so
+`main` carries it and is the base for every branch from here on.
 
 ---
 

@@ -31,17 +31,29 @@ recorded instead of stalling the run.
 
 ```
 spikes/
-  package.json            pi-coding-agent@0.86.1, tsx, typebox — nothing else
-  lib/rpc.ts              ≤60 lines: spawn pi, LF-delimited JSONL in/out, awaitEvent(type), timeout
+  package.json            pi-coding-agent@0.86.1, tsx, typebox@1.3.27 — nothing else
+  tsconfig.json           strict; run-all.sh gates on `tsc --noEmit`
+  lib/framing.ts          the JSONL decoder, separated so it is assertable without a subprocess
+  lib/rpc.ts              spawn pi, LF-delimited JSONL in/out, await(match), timeout, diagnostics
+  lib/tmp.ts lib/finding.ts   throwaway HOMEs; the finding line + exit code every spike ends on
+  00-harness/   run.ts                 (not a spike — see below)
   01-veto/      ext.ts run.ts
   02-drive/     run.ts
   03-submit/    ext.ts run.ts
   04-attach/    run.ts                 (observational — see §3.4)
   05-events/    run.ts
-  06-trust/     ext.ts run.ts
+  06-trust/     marker.ts ext.ts run.ts
   FINDINGS.md             one line per spike + the script that proves it
-  run-all.sh              runs 1,2,3,5,6 in order; prints the table; exits non-zero on any failure
+  run-all.sh              typechecks, runs every spike present, prints the table, exits non-zero on
+                          any failure; skips model-backed spikes loudly with no ANTHROPIC_API_KEY
 ```
+
+**`00-harness` is not one of the six** and answers no design question. It exists because the slice
+rule needs an executable check ([CLAUDE.md](../../CLAUDE.md), "How work is cut") and the framing
+rules below are exactly the kind of thing that fails silently. It asserts the decoder against
+chunk-split records, CRLF, multi-byte splits and U+2028/9 inside strings, then round-trips
+`get_state` through a real Pi process. It needs no key, so the harness is provable before any spike
+spends anything.
 
 `lib/rpc.ts` is deliberately too small to be worth keeping. Phase 1's runner rewrites it with
 tests. Two framing rules from Pi's RPC doc it must follow even so: **LF is the only record
@@ -220,31 +232,50 @@ change.
 **Question.** What does Pi do in RPC mode when a project has `.pi/` config and nothing can answer a
 trust prompt?
 
-**Procedure.** Three runs, each in a fresh temp project containing `.pi/settings.json` and a trivial
-`.pi/extensions/marker.ts` (registers a command; its presence proves the project config loaded).
-1. **No handler, no default.** Start Pi RPC in that cwd. Send a prompt. Pi's usage doc states that
+**Answered, 2026-09-21** — `spikes/06-trust/run.ts`, and it cost nothing:
+
+```
+TRUST: headless default = declines-silently; handler works: y; defaultProjectTrust=always works: y; --approve works: y
+```
+
+**Procedure.** ~~Three runs~~ **Four runs**, each in a fresh temp project containing
+`.pi/settings.json` and a trivial `.pi/extensions/marker.ts` (registers a command; its presence
+proves the project config loaded), under a fresh temp `HOME`.
+
+~~Send a prompt.~~ **No prompt is needed.** The RPC command `get_commands` lists registered commands
+with their source path and scope, and answers from the process without touching a provider — so the
+marker check is deterministic, instant and free. This is the general shape worth reusing: Pi's RPC
+surface answers plenty without a model, and those questions should never be paid for.
+
+1. **No handler, no default.** Start Pi RPC in that cwd; `get_commands`. Pi's usage doc states that
    non-interactive modes "do not show a trust prompt," so a hang is unlikely; the live question is
-   whether the default (`"ask"`, with nobody to ask) **silently declines** to load `.pi/` — in which
-   case the marker extension is absent and the turn otherwise completes. Record which. The timeout
-   stays as a guard.
+   whether the default (`"ask"`, with nobody to ask) **silently declines** to load `.pi/`.
+   **It does** — marker absent, process otherwise normal, nothing on stderr.
 2. **Handler.** `-e ext.ts` where the extension answers `project_trust` with
-   `{ trusted: "yes", remember: false }`. Send a prompt. Does the marker extension load?
+   `{ trusted: "yes", remember: false }`. **Marker loads.** Only user/global and CLI `-e` extensions
+   see `project_trust`; project-local ones are not loaded until after trust resolves, which is why
+   the handler has to arrive by flag.
 3. **Setting.** No handler; global `settings.json` (under the temp `HOME`) sets
    `"defaultProjectTrust": "always"`. The setting is **global only** — it is not honoured in a
    project's `.pi/settings.json`, which is correct, since otherwise a repo could trust itself. Values
-   are `"ask"` (default), `"always"`, `"never"`. Same check.
+   are `"ask"` (default), `"always"`, `"never"`. **Marker loads.**
+4. **Flag.** `--approve` / `-a`, "trust project-local files for this run" — **not in the original
+   plan, and the best fit of the three.** **Marker loads.** It is per-run where the setting is
+   per-machine: a global `always` baked into a sandbox image trusts every project that sandbox ever
+   opens, while the flag trusts exactly the one workspace the runner is starting. That is what
+   [plan.md](../plan.md) §8 D2 means by policy frozen per run.
 
-**Pass:** runs 2 and 3 both load the project extension and complete the turn. Run 1's behaviour is
-recorded whatever it is.
+**Pass:** runs 2 and 3 both load the project extension. Run 1's behaviour is recorded whatever it
+is. **All four ran as described.**
 
 **Finding.** `TRUST: headless default = loads|declines-silently|hangs; handler works: y/n;
-defaultProjectTrust=always works: y/n`
+defaultProjectTrust=always works: y/n; --approve works: y/n`
 
-**What it decides.** Phase 2's runner trusts the workspace by policy, not by prompt, so it needs one
-of runs 2/3 to work. Which one becomes the runner's mechanism. Run 1's answer says whether an
-*unconfigured* runner fails safe (declines silently — the likely case) or fails stuck. A silent
-decline is the subtler hazard: a runner that forgot to set trust would run agents *without the
-project's extensions* and nothing would say so. Phase 2's runner should assert the marker loaded.
+**What it decides.** Phase 2's runner trusts the workspace by policy, not by prompt. ~~It needs one
+of runs 2/3 to work.~~ All three mechanisms work; **the runner should use `--approve`**, per run 4.
+Run 1 confirms an *unconfigured* runner fails **open on extensions** rather than stuck: it would run
+agents *without the project's extensions* and nothing would say so. **Phase 2's runner must assert
+the marker loaded** — this is not optional hygiene, it is the only signal that trust took effect.
 
 ---
 
@@ -284,7 +315,8 @@ roughly fifteen Haiku turns.
 ## 6. Open items
 
 1. **Q5 must be answered before the findings are trusted.** Spikes against 0.86.1 say nothing about
-   another version. If the pin changes, re-run.
+   another version. If the pin changes, re-run. **0.87.0 published 2026-09-21**; the pin stays
+   0.86.1 under the decided policy, and moving it is a deliberate act that re-runs everything here.
 2. ~~`defaultProjectTrust` values are not confirmed here.~~ **Closed:** `"ask"` | `"always"` |
    `"never"`, global settings only; and non-interactive modes never show the prompt (Pi settings
    and usage docs, 2026-09-18). Spike 6 is updated accordingly.
@@ -293,3 +325,12 @@ roughly fifteen Haiku turns.
 4. **Whether `--session` is honoured under `--mode rpc`.** The flag exists for interactive mode;
    `switch_session` exists for RPC; the docs are silent on the overlap. Spike 2 now tries the flag
    first and records which works; phase 1 builds on whichever it is.
+5. **Four spikes are written up but not written, for want of a key.** 00-harness and 06-trust pass;
+   01-veto, 02-drive, 03-submit and 05-events all need `ANTHROPIC_API_KEY` and 04-attach needs a
+   person. `spikes/FINDINGS.md` carries what the probe established about each ahead of the run, so
+   none of them starts cold. **The kill criterion (§5.4) is still unevaluated** — nothing may be
+   built on the tool-policy model until 01-veto runs.
+6. **`agent_end` is not the end of a turn.** It is one low-level run and may be followed by a retry,
+   a compaction or a queued continuation; `agent_settled` is the event that says nothing more
+   follows automatically. The pass conditions above are written against `agent_end`, which is fine
+   for a spike that prompts once. Phase 1's runner should wait on `agent_settled`.
