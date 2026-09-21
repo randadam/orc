@@ -151,7 +151,7 @@ infrastructure that already exists:
    not enough — the disagreements are where you learn whether Jev is wrong or whether the LLM was.
 3. **Promote** a question to Jev-decides with a threshold chosen from the observed confidence
    distribution, not a round number.
-4. **Keep watching.** `orc.jev.fallback_rate` rising means the threshold or the question drifted.
+4. **Keep watching.** `orc.decision.fallback` rising means the threshold or the question drifted.
 
 Metrics added to [observability.md](observability.md)'s set:
 
@@ -185,15 +185,18 @@ Jev is a second upstream, and it inherits the existing model exactly:
 
 ## 7. Open items
 
-1. **Early-access dependency.** Availability, rate limits, and API stability are all unknown at three
-   days old. The `Decider` interface and the always-present LLM fallback are the mitigation; do not
-   let a question become Jev-only.
+1. **Early-access dependency.** ~~Availability~~ **Access confirmed 2026-09-21** ([phases.md](phases.md)
+   §15 Q8); the shadow track starts in phase 5. Rate limits and API stability remain unknown — the
+   `Decider` interface and the always-present LLM fallback are still the mitigation; do not let a
+   question become Jev-only. The API shape in §1–§4 came from secondary sources and must be verified
+   against TypeSafe's primary documentation before `JevDecider` is written.
 2. **Calibration is per-question and unmeasured.** §5 is the process, but no question has been
    shadowed yet, and the confidence distributions that set thresholds do not exist.
 3. **Tool-call gating latency in the hot path.** 70–500ms per gated tool call is affordable in
    principle; whether it is affordable on *every* bash call in a long implementation loop is
    untested. Gate selectively — by command class — before gating universally.
-4. **Where access comes from.** Direct API, OpenRouter, Cloudflare and Vercel gateways are all
-   options; on AWS this interacts with the Bedrock-first credential decision
-   ([plan.md](plan.md) §9 item 1), since Jev is not a Bedrock model and reintroduces a long-lived
-   key unless fronted differently.
+4. **Which access surface.** Access exists, but whether it is the direct API, OpenRouter, or a
+   gateway is unconfirmed; the broker's upstream entry and credential handling differ by answer. On
+   AWS this interacts with the SigV4 decision ([plan.md](plan.md) §9 item 1), since Jev is not a
+   Bedrock model and reintroduces a long-lived key unless fronted differently — the broker holds
+   that key exactly as it holds the model key today.

@@ -368,6 +368,12 @@ convergence in the run's metrics and decide whether it converged on quality or o
 - Skills under `.pi/skills/` for each planning role.
 - Severity assigned by `LlmDecider` with a real prompt, uniformly across reviewers and rounds — one
   ruler ([decision-layer.md](decision-layer.md) §3.1).
+- **The Jev shadow track begins.** `JevDecider` behind the same `Decider` interface, run *alongside*
+  `LlmDecider` on the severity question only: Jev's grade is recorded and discarded, the LLM's is
+  used ([decision-layer.md](decision-layer.md) §5). First step, before writing it: verify the API
+  shape against TypeSafe's primary documentation — the description in decision-layer.md came from
+  secondary sources. Severity is posed as a **Score over ordered levels**, not a Boolean, per the
+  25× false-positive result recorded there.
 - Arbitration artifacts carrying rationale for every accepted and rejected finding.
 - Fresh principal session per phase, hydrated from artifacts ([poc-v2.md](poc-v2.md) §8).
 - A **benchmark set**: three to five feature requests of varying size against the target repo,
@@ -377,7 +383,9 @@ convergence in the run's metrics and decide whether it converged on quality or o
 **Observability increment.** The first real signal. `orc.review.rounds`, `orc.review.findings` by
 severity and round, `orc.arbitration.decisions` accepted/rejected — the three that answer whether the
 review loop produces signal or ceremony ([poc-v2.md](poc-v2.md) §10 item 6). Cost per planning run
-against the estimate.
+against the estimate. From the shadow track: `orc.decision.agreement`, `orc.decision.confidence`
+and `orc.decision.duration` on the severity question — the dataset that later decides whether Jev
+grades for real.
 
 **Acceptance.**
 
@@ -388,12 +396,18 @@ against the estimate.
 3. The arbitration record shows the principal rejecting at least some findings with rationale, on at
    least one benchmark item. A principal that accepts everything is not arbitrating.
 4. `n ≥ 3` runs of one benchmark item on one configuration, and the spread is recorded.
+5. After those runs, the shadow track has produced a **recorded finding**: Jev-vs-LLM agreement rate
+   on severity, the confidence distribution, and the disagreements kept for reading. This is a
+   deliverable, not a gate — the phase passes whatever the numbers say.
 
 **Settled here.**
 
 - **The PM phase is `orc attach`** (D4). No chat UI in the prototype.
 - **Quality is read by a human** ([observability.md](observability.md) §7). No LLM judge over the
   artifacts.
+- **Nothing in this or any later phase's acceptance depends on Jev.** It shadows. Promotion to
+  Jev-decides is a judgement made from the observed distribution, per
+  [decision-layer.md](decision-layer.md) §5, and is not a phase criterion.
 
 **Spikes.**
 
@@ -419,6 +433,10 @@ hash, and you can flip the implementation model in one line and run the sweep ag
 - Implementation session on `claude-haiku-4-5` from a cleared context hydrated from the spec;
   feasibility on `claude-sonnet-5`. The model-catalog seam opens: `resolveModels()` returns two.
 - `orc.verify` for slice tests and for the full suite on the merged tree.
+- *Optional, if the phase 5 shadow is going well:* verify-failure triage (real / flake /
+  environment / dependency) joins the shadow track here, since this is the first phase with real
+  failures to classify ([decision-layer.md](decision-layer.md) §3.2). Shadow only; retries stay
+  blind until promoted.
 - Serialized integration for the single slice: merge to a local trunk branch, re-verify, principal
   review of the merged diff.
 - **Package requests**, pnpm-only, exactly as [environments.md](environments.md) §6: a request
@@ -502,7 +520,10 @@ granularity and conflict rate, the two open items with the highest stakes and no
 
 - **Conflicts are resolved by the implementation session, on the cheap tier**, gated by re-verify
   and Sonnet review ([poc-v2.md](poc-v2.md) §8). If that is where Haiku fails, the narrow fix is a
-  Sonnet session hydrated from the spec for conflicts only.
+  Sonnet session hydrated from the spec for conflicts only — and conflict triage
+  (mechanical / semantic / ambiguous) is the shadow-track candidate that would let that fix route
+  only *semantic* conflicts to the expensive session. It joins the shadow here at the earliest, as
+  an option, once `ctx.integrate` exists to observe.
 - **Merges are serialized.** One integration at a time, no exceptions, so the re-verify tail is
   measured before anyone tries to optimize it.
 
@@ -568,7 +589,7 @@ Listed so no phase above accidentally closes one. Each is deferred behind a seam
 | Dollar budget enforced in the broker | The counter already increments there |
 | LLM-driven orchestration (`orc_*` tools) | Thin wrappers over the same runner calls the SDK uses |
 | Console, connectors, escalation routing | The run directory is already the readable surface |
-| Jev as a `Decider` implementation | The interface exists from phase 4; shadow-then-promote per [decision-layer.md](decision-layer.md) §5 |
+| ~~Jev as a `Decider` implementation~~ | **Moved into the prototype** — §15 Q8 answered yes. Shadow track from phase 5; nothing gates on it |
 | Broker rewrite in Go | The prototype's broker intercepts nothing |
 
 ---
@@ -593,6 +614,7 @@ with a number, per the convention there.
 | PM is `orc attach`; quality is read by a human | 5 | D4; observability.md §7 |
 | Local trunk branch; no PRs or pushes in the prototype | 6 | Nothing GitHub-shaped is in scope |
 | Merges serialized; conflicts resolved by the implementation session | 7 | poc-v2.md §2, §8 |
+| `JevDecider` shadows `LlmDecider` on severity from phase 5; no acceptance depends on it | 5 | §15 Q8 answered yes; decision-layer.md §5 says shadow before trusting |
 
 ## 14. Decisions left open, with options
 
@@ -606,6 +628,7 @@ Each is settled in the named phase's detailed plan, not here.
 | Target repository (§15, Q1) | 1 onward | Purpose-built fixture · an existing OSS TypeScript repo · orc itself | The author |
 | Where the prototype ends (§15, Q2) | — | Phase 8 · phase 6 · phase 7 | The author |
 | Benchmark set contents | 5 | Depends on the target repo | Chosen with the repo |
+| Which questions are promoted to Jev, and when | 5–8 | Severity first · then verify-failure and conflict triage if severity's agreement holds · none | The observed agreement rate and confidence distribution from the shadow track, not a phase boundary |
 
 ## 15. Questions for the author
 
@@ -646,8 +669,10 @@ recorded here, struck through with the decision, per the convention in CLAUDE.md
 7. **Is a direct Anthropic API key the credential for the whole prototype?** The docs say start on
    keys and the broker owns the only copy. Confirm no AWS account is in scope before phase 8, so
    nothing is built for it.
-8. **Is Jev access actually in hand?** If yes, a shadow track on finding severity can run beside
-   phases 5–8 at no cost to the sequence. If no, §12 stands and nothing is planned for it.
+8. ~~**Is Jev access actually in hand?**~~ **Answered yes, 2026-09-21.** A shadow track on finding
+   severity runs beside phases 5–8 at no cost to the sequence; the Jev row leaves §12. Nothing in
+   any phase's acceptance depends on it. Which access surface (direct API, OpenRouter, a gateway) is
+   still unconfirmed — [decision-layer.md](decision-layer.md) §7.
 9. **Who implements each phase?** If detailed phase plans are going to be executed by agent sessions
    rather than by you, each phase's plan should carry an executable acceptance suite, not prose
    criteria — and phase 1's run-directory layout should be specified to the byte. That changes how
