@@ -13,11 +13,13 @@ and its "What phase 1 should carry forward" section is the part to read before b
 
 **`randadam/tudu` is seeded** at `bf25ac6`: an ordinary React SPA, **carrying no plans by design**
 (D9) — what it should become is produced through orc, not written by hand. Phase 1 pins that commit
-and binds to `pnpm test`: 46 tests, ~4s, no services. **Slices 1.0–1.2 have landed** — the
+and binds to `pnpm test`: 46 tests, ~4s, no services. **Slices 1.0–1.3 have landed** — the
 pnpm workspace with the CI gate ([docs/phases/phase-1.md](docs/phases/phase-1.md) §2.12);
 `PiProcess`, the RPC bridge, with the `fake-pi` test double every later slice's unit tests drive;
-and `defineConfig` with the canonical-JSON `hash` every later hash in the phase is taken with.
-**The next work item is slice 1.3**, the run directory, which depends on 1.2.
+`defineConfig` with the canonical-JSON `hash` every later hash in the phase is taken with; and
+`rundir.ts` with `orc runs` and `orc show`, which fixes the run directory every later slice reads
+and writes ([docs/phases/phase-1.md](docs/phases/phase-1.md) §4).
+**The next work item is slice 1.4** — `orc run`, `orc resume` and `orc.step` — which depends on 1.3.
 
 ---
 

@@ -11,6 +11,9 @@
       "default": "./dist/index.js"
     }
   },
+  "bin": {
+    "orc": "./dist/bin.js"
+  },
   "files": [
     "dist"
   ],
