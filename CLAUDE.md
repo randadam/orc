@@ -171,6 +171,16 @@ When a piece of work does not fit, the answer is to cut it smaller or to add a d
 to make the slice bigger and hope. Phase 0's spikes already follow this shape (one script, one
 question, one exit code each); every phase plan from phase 1 on is written the same way.
 
+### Branches and pull requests
+
+**Never commit or push to `main`.** Every change — including a one-line edit to this file — is cut
+as its own branch from `origin/main` and lands through a pull request. `main` moves only by merge.
+
+This binds agent sessions as much as hand edits. An agent that pushes straight to `main` has skipped
+the review step the whole design exists to produce, and it is the one shortcut that cannot be
+audited after the fact: there is no diff to read because there was no proposal. Cut the branch,
+push the branch, open the PR, and say what it contains.
+
 ### Before starting a slice
 
 Check the repository's state first, every time, and rebase if it has moved:
@@ -187,9 +197,8 @@ Check the repository's state first, every time, and rebase if it has moved:
    green before the rebase says nothing about green after it — the same rule the workflow applies
    to its own merges ([docs/poc-v2.md](docs/poc-v2.md) §2).
 
-Until [PR #1](https://github.com/randadam/orc/pull/1) merges, `main` holds only the root commit and
-the design branch is the base; this rule applies to slice branches from the moment `main` carries
-the design.
+[PR #1](https://github.com/randadam/orc/pull/1) merged the design into `main` on 2026-09-21, so
+`main` carries it and is the base for every branch from here on.
 
 ---
 
