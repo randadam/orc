@@ -10,6 +10,11 @@ export default tseslint.config(
   {
     files: ["packages/*/test/**/*.ts"],
     ...vitest.configs.recommended,
+    rules: {
+      ...vitest.configs.recommended.rules,
+      // vitest's expect takes a message as its second argument; the plugin defaults to jest's one.
+      "vitest/valid-expect": ["error", { maxArgs: 2 }],
+    },
   },
   prettier,
 );
