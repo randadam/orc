@@ -588,6 +588,33 @@ Three boundaries hold it in place:
   which is a quality improvement rather than a cost saving.
 - **It may veto, never permit.** A Jev gate can only narrow what frozen policy already allows.
 
+### D9 — The fixture is bare bones, and orc builds it out (decided)
+
+`randadam/tudu` was seeded on 2026-09-21 as a **React SPA with no backend, no storage seam and no
+devcontainer** — considerably less than [fixture.md](fixture.md) originally specified. That is the
+decision, not a shortfall to be corrected by hand.
+
+The reasoning is the same one that makes a benchmark a benchmark. A fixture that already ships the
+API, the store interface and the compose service is one where orc never has to build them, and the
+measurement reduces to whether agents can add a field to an app that already works. Making orc grow
+the app is a harder demonstration and a more honest one — and the benchmark set survived the change
+intact, which is some evidence it was measuring capability rather than layout.
+
+Two consequences, and the second is a real cost:
+
+- **Later phases depend on orc's own output.** Phase 2 needs a devcontainer that does not exist;
+  phase 7's sidecar acceptance needs a Postgres tier that does not exist. Both are now tracked as
+  build-outs (`B0`, `B1`) in [fixture.md](fixture.md) §4 alongside the feature requests, because to
+  orc they are the same kind of thing.
+- **A stalled build-out stalls a phase.** The old fixture handed every phase its props; this one
+  can leave phase 2 unable to start. [fixture.md](fixture.md) §9 items 2 and 3 name the fallbacks —
+  hand-writing `B0` as a deliberate exception, and the more interesting option of making `B1`
+  phase 6's real slice, which is the right size for it and produces work later phases need.
+
+The rule that keeps this honest: **nothing more is added to `tudu` by hand** unless it blocks a
+phase outright and orc cannot yet build it, and that call gets made in fixture.md §9 rather than
+quietly in a commit.
+
 ## 9. Open questions
 
 Two remain, plus one the POC needs immediately:

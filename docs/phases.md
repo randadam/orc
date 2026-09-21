@@ -534,7 +534,10 @@ granularity and conflict rate, the two open items with the highest stakes and no
 3. A deliberately failed slice blocks only its dependents; the run ends with an escalation that
    names what merged, what blocked, and why.
 4. A repo whose devcontainer uses a compose service runs its integration tests against that service
-   as a sidecar, with the agent holding no Docker access.
+   as a sidecar, with the agent holding no Docker access. **This depends on orc having built the
+   backend first** — `tudu` ships neither a compose service nor an integration tier
+   ([fixture.md](fixture.md) §4, `B1`; [plan.md](plan.md) §8 D9). If `B1` has not merged by phase 7,
+   see fixture.md §9 item 3: the interesting option is to make `B1` phase 6's real slice.
 5. Every landed slice's run record carries its merge commit sha.
 
 **Settled here.**
@@ -646,7 +649,7 @@ Each is settled in the named phase's detailed plan, not here.
 | Structured-output mechanism for `ask()` | 0 | Submit tool · parse final message · provider structured outputs | The phase 0 spike |
 | ~~Where telemetry lands~~ | 1 | **Settled: in-process JSONL in the run dir; OTLP as a flag** ([phases/phase-1.md](phases/phase-1.md) §2.1) | Q6: no Docker, so no collector on the dev loop |
 | Control channel to an in-container runner | 2 | Attached stdio · runner connects out · runner listens | The reattach spike |
-| ~~Target repository (§15, Q1)~~ | — | **Settled 2026-09-21: `randadam/tudu`, a hand-seeded to-do app fixture** ([fixture.md](fixture.md)) | The author |
+| ~~Target repository (§15, Q1)~~ | — | **Settled 2026-09-21: `randadam/tudu`, seeded at `592f4de` as a bare-bones React SPA — orc builds the rest** ([fixture.md](fixture.md), [plan.md](plan.md) §8 D9) | The author |
 | Where the prototype ends (§15, Q2) | — | Phase 8 · phase 6 · phase 7 | The author |
 | Benchmark set contents | 5 | Depends on the target repo | Chosen with the repo |
 | Which questions are promoted to Jev, and when | 5–8 | Severity first · then verify-failure and conflict triage if severity's agreement holds · none | The observed agreement rate and confidence distribution from the shadow track, not a phase boundary |
@@ -657,12 +660,12 @@ These are not answerable from the existing docs, and several change the plan abo
 recorded here, struck through with the decision, per the convention in CLAUDE.md.
 
 1. ~~**Which repository is the prototype target?**~~ **Answered 2026-09-21: `randadam/tudu`**
-   (renamed from `aib` the same day), **seeded by hand as a purpose-built fixture: a to-do app.**
-   Simple enough to seed in a day, open-ended enough to keep adding features to. On inspection the
-   repository was empty (zero refs, zero objects), so seeding is the first piece of work rather
-   than a further decision; what the seed must contain to exercise every phase is
-   [fixture.md](fixture.md). TypeScript + pnpm, so the guard list and pre-baked image plan hold as
-   written. The original question, for the record:
+   (renamed from `aib` the same day), **seeded by hand the same day as a purpose-built fixture: a
+   to-do app.** Simple enough to seed in a day, open-ended enough to keep adding features to.
+   **Seeded at `592f4de` — a React SPA with no backend, deliberately barer than
+   [fixture.md](fixture.md) first specified** ([plan.md](plan.md) §8 D9): the API, the storage seam
+   and the devcontainer are work for orc rather than props handed to it. TypeScript + pnpm, so the
+   guard list and pre-baked image plan hold as written. The original question, for the record:
    Three shapes, with different costs:
    - *A purpose-built fixture repo*: small TypeScript service, fast pnpm test suite, a devcontainer
      you control, and seeded feature requests. Deterministic and cheap to benchmark; artificial, so it

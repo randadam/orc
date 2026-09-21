@@ -11,8 +11,9 @@ under `--mode rpc`. 04-attach came back `forked`, which revised D4's *mechanism*
 `orc attach` is a client of the runner, not a second Pi process. `spikes/FINDINGS.md` is the record,
 and its "What phase 1 should carry forward" section is the part to read before building.
 
-**The next work item is seeding `randadam/tudu`** per [docs/fixture.md](docs/fixture.md); phase 1's
-first real run needs it at the commit phase 1 pins.
+**`randadam/tudu` is seeded** at `592f4de` — a React SPA, deliberately barer than fixture.md first
+specified (D9). Phase 1 pins that commit and binds to `pnpm test`: 46 tests, 3.6s, no services.
+**The next work item is phase 1 slice 1.0**, the pnpm workspace scaffold, which needs no seed.
 
 ---
 
@@ -31,7 +32,7 @@ first real run needs it at the commit phase 1 pins.
    [plugin-api](docs/plugin-api.md) (the SDK surface), [environments](docs/environments.md)
    (dev containers), [observability](docs/observability.md) (metrics),
    [console](docs/console.md) (UI and connectors), [decision-layer](docs/decision-layer.md) (Jev),
-   [fixture](docs/fixture.md) (what the `tudu` seed must contain).
+   [fixture](docs/fixture.md) (what `tudu` is, and what orc must build into it).
 
 ---
 
@@ -50,6 +51,7 @@ information** — each was argued through and several replaced an earlier wrong 
 | **D6** | OpenTelemetry, emitted from runner and broker — never from inside a sandbox. |
 | **D7** | The console is a client of a shared intake/interaction/observation surface. |
 | **D8** | A `Decider` interface; Jev is one implementation, an LLM is the other. |
+| **D9** | The `tudu` fixture is bare bones on purpose; orc builds it out, including what later phases need. |
 
 ### Principles that recur
 
@@ -81,11 +83,15 @@ These decided several arguments each, and are the ones to reason from when somet
 
 ## The one thing blocking a start
 
-**Nothing, any more, waits on a decision.** The target is **`randadam/tudu`** — empty as of
-2026-09-21, to be **seeded by hand as a to-do app fixture** per [docs/fixture.md](docs/fixture.md).
-Phase 0 is done, so that seed is the next piece of *work*, and phase 1's first real run needs it at
-the commit phase 1 pins. Of the ten §15 questions only Q2 (phase 6 or phase 8 as the stop) is open, and
-it sizes phases 7–8 rather than blocking them.
+**Nothing waits on a decision, and nothing waits on the seed.** Phase 0 is complete and
+**`randadam/tudu` is seeded** at `592f4de` per [docs/fixture.md](docs/fixture.md). Of the ten §15
+questions only Q2 (phase 6 or phase 8 as the stop) is open, and it sizes phases 7–8 rather than
+blocking them.
+
+**One thing does block a later phase.** The seed has no `.devcontainer/`, and D5 builds sandbox
+images from one — so **phase 2 cannot start until `B0` exists** ([fixture.md](docs/fixture.md) §4).
+Under D9 that is orc's work, which means using the un-sandboxed phase 1 runner to write the thing
+phase 2 needs. Phase 1 is unaffected either way.
 
 **The real-model budget is $50/month, hard cap** (§15 Q3). Dollar enforcement lives in the broker
 from phase 2; the full phase 6 sweep does not fit a month and is answered on the minimum compare.
@@ -121,8 +127,9 @@ of how scope was cut, and phases.md is the record of the order.
 
 Roughly 30 across the docs, each listed at the end of its own document. They are not equivalent:
 
-- **Blocking:** nothing awaits a decision. The first work item is seeding `tudu`
-  ([docs/fixture.md](docs/fixture.md)). phases.md §15 holds the ten questions put to the author;
+- **Blocking:** nothing awaits a decision, and phase 1 is unblocked. The one item that blocks a
+  *later* phase is `B0`, the devcontainer phase 2 builds its image from
+  ([docs/fixture.md](docs/fixture.md) §4). phases.md §15 holds the ten questions put to the author;
   nine are struck through, Q2 is pending and non-blocking.
 - **Empirical** — need a real run, not a decision. Slice granularity, conflict rate, whether Haiku
   can carry implementation, whether the PRD loop converges on quality or merely agreement.

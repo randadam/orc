@@ -1,106 +1,130 @@
-# The `tudu` fixture — seeding the target repository
+# The `tudu` fixture — the target repository
 
-`randadam/tudu` is the prototype's target repository ([phases.md](phases.md) §15 Q1). It is empty,
-and it will be **seeded by hand** as a purpose-built fixture: a to-do app. Simple enough that the
-seed is a day's work; open-ended enough that the benchmark set can keep adding features for as long
-as the prototype needs.
+`randadam/tudu` is the prototype's target repository ([phases.md](phases.md) §15 Q1). **It was
+seeded by hand on 2026-09-21** at `592f4de`, and it is deliberately barer than this document
+originally specified.
 
-This document is what the seed must contain so that **every phase has something real to exercise**,
-and what it must *not* be. It is not the app's design. The app is deliberately ordinary.
+**The seed is a React SPA with no backend.** That is the decision ([plan.md](plan.md) §8 D9), not an
+accident or a first cut: a fixture that already has the API, the storage seam and the sidecar is a
+fixture where orc never has to build them. The interesting work — an HTTP surface, a store
+interface with two implementations, a devcontainer, the compose service phase 7 needs — is now
+**work for orc to do**, tracked in §4 alongside the feature requests. A benchmark that measures
+whether agents can add a column to an app that already works is a weaker benchmark than one that
+measures whether they can grow the app itself.
+
+The cost is that several later phases now depend on orc having built something first, rather than on
+the seed shipping it. §3 is the honest accounting of which, and §9 carries the one item that blocks
+a phase rather than merely sizing it.
+
+This document is the record of what the seed *is*, what it must not become, and what each phase
+needs from it. It is not the app's design. The app is deliberately ordinary.
 
 ---
 
 ## 1. Ordinary on purpose
 
-The seed's job is to be a codebase agents can work in, not a showcase. Every choice below favours
-the most conventional option, for one reason: **the implementation tier is Haiku**
+The seed's job is to be a codebase agents can work in, not a showcase. Every choice favours the most
+conventional option, for one reason: **the implementation tier is Haiku**
 ([poc-v2.md](poc-v2.md) §8), and a weak model does its best work in the stack it has seen most.
 Clever framework choices cost turns-to-green and confound the very measurement phase 6 exists to
 take.
 
-| Choice | Pick | Why this and not something better |
+| Choice | As seeded | Why it holds |
 | --- | --- | --- |
-| Language / manager | TypeScript, **pnpm**, Node 22 pinned via `packageManager` and `engines` | The guard list and image plan assume exactly this ([environments.md](environments.md) §6) |
-| HTTP | **Express** | The most-trodden path for the model writing the code |
-| Tests | **vitest**, plus `supertest` for HTTP | Fast, conventional, one runner for unit / integration / e2e |
-| Storage | A `TodoStore` interface with **two implementations**: in-memory, and Postgres | See §3 — this seam is what lets phases 1–6 stay fast and phase 7 have a real sidecar |
-| Lint / format | eslint + prettier, both with a JSON reporter | Custom-metric fodder for [observability.md](observability.md) §8 |
+| Language / manager | TypeScript, **pnpm**, Node 22 | The guard list and image plan assume exactly this ([environments.md](environments.md) §6) |
+| UI | **React 19 + Vite** | The most-trodden path for the model writing the code |
+| Tests | **vitest** + Testing Library, `jsdom` | One runner; 46 tests, 3.6s, no services |
+| Storage | **React state. None.** | The store seam is a thing orc builds (§4), not a thing the seed ships |
+| Lint | **eslint** (flat config) | Custom-metric fodder for [observability.md](observability.md) §8, once it emits JSON |
 
-Target size at commit zero: **under ~600 lines of source and tests.** If it grows past that while
-seeding, something is being built that a benchmark feature should build instead.
+751 lines of source and tests at `592f4de`. **If it grows much past that by hand, something is being
+built that a benchmark feature should build instead.**
 
 ---
 
-## 2. Layout
+## 2. Layout, as seeded
 
 ```
 tudu/
-  package.json               scripts below; packageManager: pnpm@<pinned>; engines.node: 22
-  pnpm-lock.yaml
-  pnpm-workspace.yaml        minimumReleaseAge and onlyBuiltDependencies stated explicitly (§5)
-  .devcontainer/
-    devcontainer.json        §5
-    docker-compose.yml       app + postgres
+  package.json               scripts below
+  pnpm-lock.yaml             also package-lock.json — see §9 item 1
+  pnpm-workspace.yaml        allowBuilds: { esbuild: false }
+  .github/workflows/ci.yml   lint, typecheck, test:coverage, build
+  index.html  vite.config.ts  eslint.config.js  tsconfig*.json
   src/
-    app.ts                   express app factory; takes a TodoStore
-    server.ts                listens; reads DATABASE_URL to pick the store
-    todos/
-      model.ts               Todo type, validation
-      service.ts             create / list / complete / delete
-      routes.ts              HTTP surface
-    storage/
-      store.ts               the TodoStore interface
-      memory.ts
-      postgres.ts            + migrations/0001_init.sql
-    metrics.ts               named counters (todos_created, todos_completed) — greppable by ops
-  test/
-    unit/                    service + model against MemoryStore; no services needed
-    integration/             routes against PostgresStore; skip cleanly without DATABASE_URL
-    e2e/                     full HTTP flows with supertest against a booted app
-  benchmark/                 the feature requests, one file each (§4)
-  scripts/
-    deploy.sh                a no-op that prints the version and exits 0 (§3, phase 8)
+    App.tsx                  + App.test.tsx
+    main.tsx  index.css
+    components/              TodoForm, TodoItem, TodoList, TodoFilters — each with a .test.tsx
+    hooks/useTodos.ts        the state seam: add / toggle / remove / filter  (+ .test.ts)
+    lib/todos.ts             the Todo type and the pure operations on it     (+ .test.ts)
+    test/                    setup.ts, factories.ts
 ```
 
-`package.json` scripts — these names are what `testCmd`, the coverage gate and the custom metrics
-bind to, so they are part of the contract:
+`package.json` scripts, as seeded:
 
 ```
-test              vitest run                      (unit + integration + e2e; integration skips w/o DB)
-test:unit         vitest run test/unit
-test:integration  vitest run test/integration
-test:e2e          vitest run test/e2e
-coverage          vitest run --coverage --coverage.reporter=json
-lint              eslint . --format json
-build             tsc -p .
-metrics           node -e "..." prints the metric names in src/metrics.ts, one per line
-deploy            scripts/deploy.sh
+dev            vite
+build          tsc -b && vite build
+preview        vite preview
+lint           eslint .
+typecheck      tsc -b --noEmit
+test           vitest run
+test:watch     vitest
+test:coverage  vitest run --coverage
 ```
+
+**`src/lib/todos.ts` and `src/hooks/useTodos.ts` are where the benchmark features land.** They are
+the seed's only real seam, and they play the part `service.ts` plays in a backend fixture: pure
+logic with its own tests, under a UI that exercises it.
+
+**What the contract in phases 1–8 expects and the seed does not have:** `test:unit`, a `coverage`
+script emitting the JSON reporter, `lint --format json`, `metrics`, `deploy`, `benchmark/`,
+`.devcontainer/`. Each is accounted for in §3 and §4 rather than assumed away.
 
 ---
 
-## 3. What each phase needs from the seed
+## 3. What each phase needs, and where it now comes from
 
-| Phase | Needs | How the seed provides it |
+| Phase | Needs | Status against `592f4de` |
 | --- | --- | --- |
-| **1** — SDK on subprocesses | A real repo where two agents can do real, small work and a suite that says whether they broke it | The app plus `test:unit`, green in under 10s with no services |
-| **2** — sandboxes | An image built from the repo's own devcontainer, with nothing needing the network at run time | `.devcontainer/` with installs in `onCreateCommand` and **no `postCreateCommand`** — the deliberate test of [environments.md](environments.md) §2's sharp edge |
-| **3** — durability | Sessions worth recording and replaying | Any phase 1 workflow; nothing extra |
-| **4** — walking skeleton | A `testCmd` for prevalidation to discover, a baseline to be green | `test` exits 0 at commit zero (§6) |
-| **5** — real planning | A benchmark set of feature requests a PM can be interviewed about, with real dependency edges | `benchmark/` (§4), pinned by the seed commit |
-| **6** — one real slice | Slice-local tests a senior can add; a coverage report; metric names ops can grep | `test:unit` / `test:integration` split; `coverage`; `metrics` |
-| **7** — scheduler | A compose service so integration tests hit a **sidecar**; features that genuinely conflict | Postgres in `docker-compose.yml`; benchmark pairs that touch the same files (§4) |
-| **8** — fan-out and sign-offs | Subslices small enough for Haiku; E2E tests for QA; a deploy target for the runbook | `test/e2e`; `scripts/deploy.sh` as the no-op deploy the runbook and rollback plan can name |
+| **1** — SDK on subprocesses | A real repo where two agents can do small work, and a suite that says whether they broke it | **Have it.** `pnpm test` is 46 tests in 3.6s with no services. There is no `test:unit`; phase 1 binds to `pnpm test`, which is the fast suite here |
+| **2** — sandboxes | An image built from the repo's own devcontainer | **Missing, and blocking.** No `.devcontainer/`. See §9 item 2 — this is the one gap that stops a phase rather than sizing it |
+| **3** — durability | Sessions worth recording and replaying | **Have it.** Any phase 1 workflow; nothing extra |
+| **4** — walking skeleton | A `testCmd` for prevalidation to discover, and a green baseline | **Have it.** `test` exits 0 at `592f4de` (§6) |
+| **5** — real planning | Feature requests with real dependency edges | **Have them**, in §4 — but they live here, not in `tudu/benchmark/`, until orc writes them there |
+| **6** — one real slice | Slice-local tests; a coverage report; metric names to grep | **Partly.** Tests and `test:coverage` exist; the JSON reporters and `src/metrics.ts` are B2/B3 in §4 |
+| **7** — scheduler | A compose service so integration tests hit a **sidecar**; features that genuinely conflict | **Conflicts yes, sidecar no.** Phase 7 criterion 4 depends on B1 having merged first — see §9 item 3 |
+| **8** — fan-out and sign-offs | Subslices small enough for Haiku; E2E for QA; a deploy target | **Partly.** The component tests are the E2E analogue for an SPA; `scripts/deploy.sh` is B4 in §4 |
 
-The storage seam is the one non-obvious decision. **Phases 1–6 never need Postgres running** — unit
-tests use the memory store, and integration tests skip cleanly (not fail) when `DATABASE_URL` is
-unset. **Phase 7's sidecar acceptance** ([phases.md](phases.md) §10 criterion 4) then has something
-real to hit: the same integration tests, now against the compose service, no longer skipping. One
-codebase, two speeds, no flag-flipping between phases.
+**The dependency this creates is the point and the risk in one.** The old fixture handed every phase
+its props. This one makes phases 6, 7 and 8 depend on orc having successfully built something
+first — which is a far better demonstration when it works, and a stalled prototype when it does not.
+§4 orders the build-out so the blocking pieces come first, and §9 item 3 states plainly what happens
+if orc cannot deliver B1.
 
 ---
 
-## 4. Benchmark set v0
+## 4. The work: build-outs and features
+
+Two kinds of request, in one list, because to orc they are the same kind of thing — a feature
+request that a PM is interviewed about and slices are cut from. They are separated here only because
+the **B** items are load-bearing for later phases while the **F** items are the measurement.
+
+### 4.1 Build-outs — what later phases need orc to build
+
+| ID | Request | Size | Depends on | Unblocks |
+| --- | --- | --- | --- | --- |
+| **B0** | "Set this repo up so it can run in a container the same way every time" — a `.devcontainer/` with installs at prebuild and nothing at start | S | — | **Phase 2.** See §5 for the shape it must land on, and §9 item 2 for why it may have to be hand-written instead |
+| **B1** | "My to-dos vanish when I close the tab. I want them saved on a server so I can see them from my laptop too" | L | B0 | **Phase 7's sidecar.** An HTTP surface, a store interface, memory and Postgres implementations, a compose service |
+| **B2** | "I want the CI to tell me how much of the code the tests cover, and fail if it drops" | S | — | Phase 6's coverage gate — needs `coverage` emitting the JSON reporter |
+| **B3** | "I want to see counts of what the app is doing — how many to-dos get made, how many get finished" | S | B1 | Phase 6's custom metrics ([observability.md](observability.md) §8) — needs `src/metrics.ts` and a `metrics` script |
+| **B4** | "Give me a one-command deploy, even if it does nothing yet" | S | — | Phase 8's runbook and rollback plan — `scripts/deploy.sh`, exits 0, prints the version |
+
+**B0 and B1 are the two that matter.** Everything else is a convenience that a phase can work
+around; those two are the difference between phase 2 running and not, and between phase 7's
+criterion 4 being testable and being deleted.
+
+### 4.2 Benchmark set v0 — the measurement
 
 Five feature requests, phrased as a **user would ask for them** — not as specs — because phase 5's
 PM interview turns them into PRDs and that transformation is part of what is measured. Sizes are
@@ -108,30 +132,35 @@ guesses to be corrected by phase 6's turns-to-green.
 
 | ID | Request | Size | Depends on | Files it will touch |
 | --- | --- | --- | --- | --- |
-| **F1** | "I want to put tags on my to-dos and filter by them" | S | — | `model`, `service`, `routes`, migration |
-| **F2** | "To-dos need due dates, and I want to see what's overdue" | M | — | `model`, `service`, `routes`, migration |
-| **F3** | "Show me what's due in the next N days" | S | F2 | `service`, `routes` |
-| **F4** | "Some to-dos repeat — weekly, monthly. When I complete one, the next should appear" | L | F2 | `model`, `service`, `routes`, migration |
-| **F5** | "Let me complete or delete a bunch of to-dos at once" | S | — | `service`, `routes` |
+| **F1** | "I want to put tags on my to-dos and filter by them" | S | — | `lib/todos`, `hooks/useTodos`, `TodoFilters`, `TodoItem` |
+| **F2** | "To-dos need due dates, and I want to see what's overdue" | M | — | `lib/todos`, `hooks/useTodos`, `TodoForm`, `TodoItem` |
+| **F3** | "Show me what's due in the next N days" | S | F2 | `lib/todos`, `TodoFilters` |
+| **F4** | "Some to-dos repeat — weekly, monthly. When I complete one, the next should appear" | L | F2 | `lib/todos`, `hooks/useTodos`, `TodoForm`, `TodoItem` |
+| **F5** | "Let me complete or delete a bunch of to-dos at once" | S | — | `hooks/useTodos`, `TodoList`, `TodoItem` |
 
-Three properties are engineered in, and should be preserved when the set grows:
+Three properties are engineered in, and **all three survived the move from a backend fixture to this
+one** — which is some evidence the set was measuring the right things rather than the old layout:
 
 - **Real dependency edges.** F3 and F4 cannot start until F2 has merged — a capability dependency,
-  not a file one ([poc-v2.md](poc-v2.md) §2).
-- **Designed conflicts.** F1, F2 and F5 are independent and all touch `service.ts` and `routes.ts`.
-  Run concurrently, at least one genuine merge conflict is near-certain — which is exactly what
-  phase 7's acceptance criterion 2 requires and would otherwise have to wait for by luck.
+  not a file one ([poc-v2.md](poc-v2.md) §2). B1 → B3 is a second, and a coarser one.
+- **Designed conflicts.** F1, F2 and F5 are independent and all touch `lib/todos.ts` and
+  `hooks/useTodos.ts`. Run concurrently, at least one genuine merge conflict is near-certain —
+  which is exactly what phase 7's acceptance criterion 2 requires and would otherwise have to wait
+  for by luck.
 - **A spread of sizes.** F1/F3/F5 are one-session slices; F4 is the one likely to fan out into
   subslices at phase 8, and the one most likely to show whether Haiku can carry implementation.
 
-The canonical copy lives in `tudu/benchmark/F*.md`, committed with the seed, so a request is pinned
-to the commit it was written against. orc's records reference them by id and commit.
+**These live here, not in `tudu/`.** The old plan put the canonical copy in `tudu/benchmark/F*.md`
+so a request was pinned to the commit it was written against. The seed does not carry them, so this
+document is canonical until orc writes them into the repo; orc's records reference them by id plus
+the `tudu` commit they were run against.
 
 ---
 
 ## 5. The devcontainer, exactly
 
-This file is the phase 2 image source and the first real exercise of D5, so its shape matters:
+**This does not exist in the seed.** It is B0, and it is the first real exercise of D5, so its shape
+matters whether orc writes it or a person does:
 
 ```jsonc
 {
@@ -141,7 +170,7 @@ This file is the phase 2 image source and the first real exercise of D5, so its 
   "runServices": ["app", "db"],
   "workspaceFolder": "/workspace",
   "features": {
-    "ghcr.io/devcontainers/features/node:1": { "version": "22" }   // pinned digest at seed time
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" }   // pinned digest
   },
   "onCreateCommand": "corepack enable && pnpm install --frozen-lockfile",
   "remoteEnv": { "DATABASE_URL": "postgres://tudu:tudu@db:5432/tudu" }
@@ -151,62 +180,89 @@ This file is the phase 2 image source and the first real exercise of D5, so its 
 ```
 
 Installation happens in `onCreateCommand`, which prebuilds; nothing runs at container start that
-needs the registry. That is the whole reason the seed can be built once and run with no network.
+needs the registry. **That is the whole reason the image can be built once and run with no network**,
+and it is the deliberate test of [environments.md](environments.md) §2's sharp edge.
 
-`pnpm-workspace.yaml` states the two supply-chain settings **explicitly at their defaults** —
+The `db` service and `DATABASE_URL` only become real with B1. Until then the compose file is the app
+service alone, and B1 adds the second — which makes B0 a smaller, safer first agent task than it
+looks.
+
+`pnpm-workspace.yaml` should state the two supply-chain settings **explicitly at their defaults** —
 `minimumReleaseAge: 1440` and `onlyBuiltDependencies: []` — so the guard list in
 [environments.md](environments.md) §6 has real fields to protect, and a diff that weakens them is
-visible as a diff rather than as the appearance of a new key.
+visible as a diff rather than as the appearance of a new key. The seed instead carries
+`allowBuilds: { esbuild: false }`, which is the same intent in pnpm 11's newer spelling; the guard
+list needs to name whichever form the pinned pnpm uses.
 
 ---
 
 ## 6. The baseline
 
-"Green at commit zero" means, precisely:
+"Green at `592f4de`" means, precisely, and **verified on 2026-09-21**:
 
-1. `pnpm test` exits 0 with **no services running**: unit and e2e pass, integration reports
-   *skipped* (not failed, not errored). Prevalidation treats skipped as green and records the count.
-2. `pnpm test` exits 0 **with the compose db up**, integration included, in under 60s.
-3. `pnpm lint`, `pnpm build`, `pnpm coverage` all exit 0.
-4. `pnpm metrics` prints at least two names, and each appears in `src/metrics.ts`.
+1. `pnpm install --frozen-lockfile` succeeds, and `pnpm test` exits 0 with **no services running**:
+   46 tests across 7 files in 3.6s. Prevalidation treats this as the fast suite and records the
+   count.
+2. `pnpm lint`, `pnpm typecheck` and `pnpm build` all exit 0.
 
-Item 1 is what phases 1–6 run against. Item 2 is what phase 7 runs against. Both are asserted by
-the seed's own CI (a single GitHub Actions job) so the baseline cannot silently rot between phases.
+What the old baseline asked for and this one cannot yet: an integration tier that reports *skipped*
+without `DATABASE_URL` and passes with the compose db up (B1), `coverage` emitting JSON (B2), and
+`metrics` printing names from `src/metrics.ts` (B3). **Each is a build-out, so each becomes part of
+the baseline the moment it merges** — and the seed's CI is what stops the baseline rotting between
+phases, once it runs the same commands orc does (§9 item 1).
 
 ---
 
-## 7. What the seed must not be
+## 7. What the seed must not become
 
-- **Not a finished app.** Under ~600 lines. Features arrive through the benchmark set, or the
-  benchmark set is measuring nothing.
+- **Not a finished app.** 751 lines at `592f4de`. Features arrive through §4, or §4 is measuring
+  nothing.
+- **Not built by hand from here on.** This is the sharp edge of D9: every temptation to "just add
+  the API quickly" is a benchmark feature deleted. The exception is a piece that blocks a phase
+  outright and that orc cannot yet build — today that is B0, and §9 item 2 is where that call gets
+  made rather than made quietly in a commit.
 - **Not clever.** No custom framework, no decorators, no code generation, no monorepo. Ordinary
-  Express, ordinary vitest.
-- **Not networked at test time.** Nothing in `test/` fetches anything. The sandbox has no network.
-- **Not carrying secrets.** The Postgres credentials are the fixture's and appear in the compose
-  file on purpose; nothing else credential-shaped exists in the repo.
-- **Not pre-solving benchmark features.** No `tags` column "for later." The seed contains a to-do
-  with a title and a done flag, and that is all.
+  React, ordinary vitest, and ordinary Express if and when B1 lands.
+- **Not networked at test time.** Nothing in the tests fetches anything. The sandbox has no network.
+- **Not carrying secrets.** If B1 brings Postgres credentials, they are the fixture's and appear in
+  the compose file on purpose; nothing else credential-shaped exists in the repo.
+- **Not pre-solving benchmark features.** No `tags` field "for later". The seed's `Todo` has a
+  title and a done flag, and that is all.
 
 ---
 
 ## 8. Sizing and sequence
 
-A day to write by hand, including the benchmark files and the CI job. It is the first piece of work
-after phase 0 and before phase 1's first real run — phase 1's plan assumes it exists at the commit
-it pins.
+**Seeding is done** — a day's work, landed 2026-09-21. What follows is no longer seeding: B0 before
+phase 2, B1 before phase 7, and the F set as the phases that measure them arrive. Phase 1 needs
+nothing more than what is already there.
 
 ---
 
 ## 9. Open items
 
-1. **Express versus something smaller.** Express is picked for model familiarity; if phase 6 shows
-   Haiku handling it fine, the choice never matters. If a lighter framework would measurably help,
-   that is a benchmark-set question, not a seed question.
-2. **E2E means HTTP-level here.** `test/e2e` drives the booted app over HTTP with supertest. There is
-   no browser. For a to-do API that is the honest meaning of end-to-end; if the app grows a UI, QA's
-   E2E plan grows with it.
-3. **Sizes in §4 are guesses.** Phase 6 corrects them; phase 8's fan-out decisions depend on F4
-   actually being large.
-4. **Migration tooling.** Plain SQL files applied by the Postgres store on connect is the
-   conventional-and-tiny choice; whether the benchmark features need something more is unknown
-   until F1 adds a column.
+1. **The seed is npm-driven, against the pnpm rule.** `package-lock.json` is committed beside
+   `pnpm-lock.yaml`, and `.github/workflows/ci.yml` runs `npm ci` and `npm run`. This matters beyond
+   tidiness: [environments.md](environments.md) §6's guard list assumes pnpm semantics — lifecycle
+   scripts blocked on install, `minimumReleaseAge` holding back same-day versions — and an agent
+   that reaches for npm inside the sandbox gets none of them, silently. `packageManager` and
+   `engines.node` are also absent. **Being fixed by the author; re-pin §8's commit when it lands.**
+2. **No `.devcontainer/`, and phase 2 cannot start without one.** It is B0, and there is a
+   chicken-and-egg problem worth naming: phase 2 is the phase that runs agents in sandboxes, so
+   using orc to write the devcontainer means using the un-sandboxed phase 1 runner to do it. That is
+   fine and is probably the right first real task for phase 1's `orc run` — but if it does not work,
+   B0 gets hand-written, and that is a deliberate exception to §7 rather than a quiet one.
+3. **Phase 7's sidecar acceptance now depends on B1.** [phases.md](phases.md) §10 criterion 4 wants
+   integration tests hitting a compose service; there is no service and no integration tier until
+   orc builds one. If B1 has not merged by phase 7, the options are to hand-write B1, to run phase 7
+   without criterion 4, or to reorder so B1 is phase 6's real slice. **Phase 6's slice being B1 is
+   the interesting answer** — it is exactly the size phase 6 wants, and it makes the Haiku-versus-
+   Sonnet comparison run on work that later phases actually need. Not decided here.
+4. **E2E means component-level here.** The seed's Testing Library tests drive the rendered app, and
+   for an SPA that is the honest meaning of end-to-end. If B1 lands, QA's E2E plan grows an HTTP
+   tier with supertest; a browser tier is not planned.
+5. **Sizes in §4 are guesses.** Phase 6 corrects them; phase 8's fan-out decisions depend on F4
+   actually being large, and on B1 being larger still.
+6. **The benchmark set lives in this document, not in `tudu/`.** That breaks the property that a
+   request is pinned to the commit it was written against. Writing them into `tudu/benchmark/` is
+   itself a small orc task, and the first one where the output is prose rather than code.
