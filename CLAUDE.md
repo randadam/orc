@@ -3,14 +3,16 @@
 Read this first. It exists so a session with no prior context can pick up the design without
 re-deriving it or re-litigating settled questions.
 
-**Status: design complete; phase 0 all but finished.** Twelve documents, plus `spikes/` — every
-spike has run. **The kill criterion is answered: 01-veto passed, so the tool-policy model stands and
-phase 1 may proceed.** 04-attach came back `forked`, which revised D4's *mechanism* (not its intent)
-— `orc attach` is a client of the runner, not a second Pi process. 03-submit passed on its re-run, 5/5 with
-`terminate` working. 02-drive answered everything §3.2 asks — abort lands in 0.0s, `--session` is
-honoured under `--mode rpc`, context survives — but one check measured the wrong thing and its
-replacement has not run. **A green `./run-all.sh` is all that is left of phase 0.** `spikes/FINDINGS.md` is the record; see
-[docs/phases/phase-0.md](docs/phases/phase-0.md) §5.
+**Status: phase 0 complete; phase 1 is next.** Twelve documents, plus `spikes/` — all six spikes
+ran green on 2026-09-21 and every [docs/phases/phase-0.md](docs/phases/phase-0.md) §5 exit criterion
+is met. **The kill criterion is answered: `tool_call` can veto, so the tool-policy model stands.**
+Structured output is 5/5 on a terminating tool, abort and resume work, and `--session` is honoured
+under `--mode rpc`. 04-attach came back `forked`, which revised D4's *mechanism* (not its intent) —
+`orc attach` is a client of the runner, not a second Pi process. `spikes/FINDINGS.md` is the record,
+and its "What phase 1 should carry forward" section is the part to read before building.
+
+**The next work item is seeding `randadam/tudu`** per [docs/fixture.md](docs/fixture.md); phase 1's
+first real run needs it at the commit phase 1 pins.
 
 ---
 
@@ -81,8 +83,8 @@ These decided several arguments each, and are the ones to reason from when somet
 
 **Nothing, any more, waits on a decision.** The target is **`randadam/tudu`** — empty as of
 2026-09-21, to be **seeded by hand as a to-do app fixture** per [docs/fixture.md](docs/fixture.md).
-That seed is the first piece of *work* after phase 0, and phase 1's first real run needs it at the
-commit phase 1 pins. Of the ten §15 questions only Q2 (phase 6 or phase 8 as the stop) is open, and
+Phase 0 is done, so that seed is the next piece of *work*, and phase 1's first real run needs it at
+the commit phase 1 pins. Of the ten §15 questions only Q2 (phase 6 or phase 8 as the stop) is open, and
 it sizes phases 7–8 rather than blocking them.
 
 **The real-model budget is $50/month, hard cap** (§15 Q3). Dollar enforcement lives in the broker

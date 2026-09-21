@@ -315,6 +315,8 @@ The file is the phase's deliverable. Phase 1's detailed plan opens by quoting it
 
 ## 5. Exit criteria
 
+**All five met on 2026-09-21. Phase 0 is complete; `spikes/FINDINGS.md` is the record.**
+
 1. `run-all.sh` exits 0 — spikes 1, 2, 3, 5, 6 pass their executable conditions.
 2. Spike 4 has been performed by a person and its finding recorded.
 3. `FINDINGS.md` has six blocks.
@@ -322,6 +324,11 @@ The file is the phase's deliverable. Phase 1's detailed plan opens by quoting it
    1" or "spike 1 failed, redesign per §3.1" — and if spike 4 came back anything but `shared`,
    D4's mechanism paragraph in [plan.md](../plan.md) §8 has been updated.
 5. `spikes/` is committed as a record and **nothing from it is imported by anything**.
+
+Against each, as run: (1) green, all six. (2) done by hand — `forked`. (3) seven blocks, one per
+spike plus the harness. (4) **spike 1 passed, proceed to phase 1**, written at the top of
+`FINDINGS.md`; spike 4 came back `forked`, so D4's mechanism paragraph in [plan.md](../plan.md) §8
+is updated and `orc attach` is now a client of the runner. (5) nothing imports `spikes/`.
 
 **Sizing.** One to two days for a person including the manual attach spike; a few hours for an
 agent session with a key in hand, plus a person for §3.4. Model spend is well under a dollar —
@@ -348,12 +355,14 @@ roughly fifteen Haiku turns.
    `spikes/FINDINGS.md`. 00-harness, 01-veto, 05-events and 06-trust pass; 04-attach came back
    `forked`, which revised D4's mechanism in [plan.md](../plan.md) §8 and §3 of
    [phases.md](../phases.md).
-6. **One re-run is outstanding: 02-drive.** Everything §3.2 asks has been observed — abort lands in
-   0.0s, `--session` resumes, context survives — but its "the abort cut the run short" check counted
-   `tool_execution_start`s, which measures nothing once Pi runs sibling tool calls concurrently. The
-   check now counts tool executions that ended aborted, and has not itself been run. **Exit
-   criterion 1 is not met until `./run-all.sh` is green end to end.** 03-submit passed on its
-   re-run, 5/5 with `terminate` working.
+6. ~~**One re-run is outstanding: 02-drive.**~~ **Closed: the suite is green end to end.** 02-drive
+   and 03-submit both passed on re-runs after bugs in the spikes themselves were fixed; the
+   reasoning is kept in `spikes/FINDINGS.md` rather than deleted, because each mistake is a trap
+   phase 1's runner would otherwise walk into. That file's "What phase 1 should carry forward"
+   section collects the six.
+7. **Nothing in this phase is kept as code, and that still holds.** `lib/rpc.ts` was written to be
+   thrown away and phase 1 rewrites it with tests. The temptation to keep it will be strongest now
+   that it works.
 6. **`agent_end` is not the end of a turn.** It is one low-level run and may be followed by a retry,
    a compaction or a queued continuation; `agent_settled` is the event that says nothing more
    follows automatically. The pass conditions above are written against `agent_end`, which is fine
