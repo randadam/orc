@@ -54,8 +54,8 @@ immediately; Pi's built-in tools are `read`, `bash`, `powershell`, `edit`, `writ
 ### 1.3 The seed
 
 `randadam/tudu` was seeded on 2026-09-21 and **this phase pins `592f4de`**. It is a React SPA,
-barer than [fixture.md](../fixture.md) first specified and deliberately so ([plan.md](../plan.md)
-§8 D9) — orc builds the rest. The sha is written in exactly three places: this line,
+an ordinary one **carrying no plans by design** ([plan.md](../plan.md) §8 D9) — what it should
+become is produced through orc. The sha is written in exactly three places: this line,
 `examples/loop-and-escape/README.md`, and `accept/phase1/seed.ts`, and nowhere else.
 
 **The fast suite is `pnpm test`, not `pnpm test:unit`** — the seed has no `test:unit`, and `test` is
@@ -644,13 +644,12 @@ export default defineWorkflow("loop-and-escape", async (orc, input: { task: stri
 ```
 
 The example's `README.md` states the pinned `tudu` sha and the task the acceptance run uses. The
-task must be real, small, and **not one of the benchmark features or build-outs** in
-[fixture.md](../fixture.md) §4: the suggested one is *"Cap to-do titles at 200 characters, with a
-unit test."* It lands in `src/lib/todos.ts` beside `createTodo`, and `pnpm test` is the gate.
+task must be real and small — a throwaway used to prove the runner works, not a feature anyone
+planned: the suggested one is *"Cap to-do titles at 200 characters, with a unit test."* It lands in
+`src/lib/todos.ts` beside `createTodo`, and `pnpm test` is the gate.
 
 The previously suggested task — rejecting empty or whitespace-only titles — **is already true at
-`592f4de`**: `createTodo` trims and returns `null`. That is the check this paragraph asks for,
-performed. Do it again if the pin moves.
+`592f4de`**: `createTodo` trims and returns `null`. Check again if the pin moves.
 
 Acceptance 1 says this must read like ordinary TypeScript to someone who has not seen orc. The
 test is: every comment in the file is about the task or the control flow, and none explains an

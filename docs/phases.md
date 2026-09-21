@@ -534,10 +534,10 @@ granularity and conflict rate, the two open items with the highest stakes and no
 3. A deliberately failed slice blocks only its dependents; the run ends with an escalation that
    names what merged, what blocked, and why.
 4. A repo whose devcontainer uses a compose service runs its integration tests against that service
-   as a sidecar, with the agent holding no Docker access. **This depends on orc having built the
-   backend first** — `tudu` ships neither a compose service nor an integration tier
-   ([fixture.md](fixture.md) §4, `B1`; [plan.md](plan.md) §8 D9). If `B1` has not merged by phase 7,
-   see fixture.md §9 item 3: the interesting option is to make `B1` phase 6's real slice.
+   as a sidecar, with the agent holding no Docker access. **`tudu` has neither today**
+   ([fixture.md](fixture.md) §4); under [plan.md](plan.md) §8 D9 that gap is planned through orc
+   when this phase is reached rather than pre-written, so how the criterion is met is itself an
+   open item for phase 7's detailed plan.
 5. Every landed slice's run record carries its merge commit sha.
 
 **Settled here.**
@@ -649,7 +649,7 @@ Each is settled in the named phase's detailed plan, not here.
 | Structured-output mechanism for `ask()` | 0 | Submit tool · parse final message · provider structured outputs | The phase 0 spike |
 | ~~Where telemetry lands~~ | 1 | **Settled: in-process JSONL in the run dir; OTLP as a flag** ([phases/phase-1.md](phases/phase-1.md) §2.1) | Q6: no Docker, so no collector on the dev loop |
 | Control channel to an in-container runner | 2 | Attached stdio · runner connects out · runner listens | The reattach spike |
-| ~~Target repository (§15, Q1)~~ | — | **Settled 2026-09-21: `randadam/tudu`, seeded at `592f4de` as a bare-bones React SPA — orc builds the rest** ([fixture.md](fixture.md), [plan.md](plan.md) §8 D9) | The author |
+| ~~Target repository (§15, Q1)~~ | — | **Settled 2026-09-21: `randadam/tudu`, seeded at `592f4de` as an ordinary React SPA carrying no plans** ([fixture.md](fixture.md), [plan.md](plan.md) §8 D9) | The author |
 | Where the prototype ends (§15, Q2) | — | Phase 8 · phase 6 · phase 7 | The author |
 | Benchmark set contents | 5 | Depends on the target repo | Chosen with the repo |
 | Which questions are promoted to Jev, and when | 5–8 | Severity first · then verify-failure and conflict triage if severity's agreement holds · none | The observed agreement rate and confidence distribution from the shadow track, not a phase boundary |
@@ -662,10 +662,10 @@ recorded here, struck through with the decision, per the convention in CLAUDE.md
 1. ~~**Which repository is the prototype target?**~~ **Answered 2026-09-21: `randadam/tudu`**
    (renamed from `aib` the same day), **seeded by hand the same day as a purpose-built fixture: a
    to-do app.** Simple enough to seed in a day, open-ended enough to keep adding features to.
-   **Seeded at `592f4de` — a React SPA with no backend, deliberately barer than
-   [fixture.md](fixture.md) first specified** ([plan.md](plan.md) §8 D9): the API, the storage seam
-   and the devcontainer are work for orc rather than props handed to it. TypeScript + pnpm, so the
-   guard list and pre-baked image plan hold as written. The original question, for the record:
+   **Seeded at `592f4de` — an ordinary React SPA, carrying no plans by design**
+   ([plan.md](plan.md) §8 D9): what it should become is produced through orc rather than handed to
+   it. TypeScript + pnpm, so the guard list and pre-baked image plan hold as written. The original
+   question, for the record:
    Three shapes, with different costs:
    - *A purpose-built fixture repo*: small TypeScript service, fast pnpm test suite, a devcontainer
      you control, and seeded feature requests. Deterministic and cheap to benchmark; artificial, so it
@@ -735,6 +735,7 @@ recorded here, struck through with the decision, per the convention in CLAUDE.md
    scope was cut. This document's phase numbers are the sequence to plan against; the mapping is in
    §2. If the two ever disagree on content, poc.md and poc-v2.md are the scope authority and this
    document is the order authority.
-3. **The benchmark set is undefined** until the target repository is chosen. It is a phase 5
-   deliverable, but it constrains the fixture repo's design if the fixture option is taken in Q1, so
-   it may need sketching earlier.
+3. ~~**The benchmark set is undefined** until the target repository is chosen.~~ **Settled by
+   [plan.md](plan.md) §8 D9: it stays undefined, and stays a phase 5 deliverable.** `tudu` carries
+   no plans, so there is nothing to sketch earlier and nothing in the repository for a pre-written
+   set to constrain. Producing it is part of what phase 5 demonstrates.
