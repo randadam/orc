@@ -1,10 +1,15 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { anthropicKey } from "./env.ts";
 import { JsonlDecoder } from "./framing.ts";
 
-// The package exports only ESM conditions and no "./package.json", so require.resolve cannot
-// find it; the CLI is located off the main entry instead.
-const PI_BIN = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")).replace(
+/**
+ * The Pi CLI entry point.
+ *
+ * The package exports only ESM conditions and no "./package.json", so require.resolve cannot
+ * find it; the CLI is located off the main entry instead.
+ */
+export const PI_BIN = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")).replace(
   /dist[/\\]index\.js$/,
   "dist/bundle/cli.js",
 );
@@ -23,6 +28,8 @@ export interface PiOptions {
 /** A Pi subprocess in `--mode rpc`, driven over LF-delimited JSONL. */
 export class Pi {
   readonly records: PiRecord[] = [];
+  /** `receivedAt[i]` is when `records[i]` was decoded — the only clock tool durations have. */
+  readonly receivedAt: number[] = [];
   private readonly child: ChildProcess;
   private readonly decoder = new JsonlDecoder();
   private readonly waiters = new Set<(r: PiRecord) => void>();
@@ -33,16 +40,23 @@ export class Pi {
 
   constructor(opts: PiOptions) {
     this.timeoutMs = opts.timeoutMs ?? 120_000;
+    const key = anthropicKey();
     this.child = spawn(process.execPath, [PI_BIN, "--mode", "rpc", ...(opts.args ?? [])], {
       cwd: opts.cwd ?? process.cwd(),
-      // PI_OFFLINE suppresses update checks and telemetry only; model calls still go out.
-      env: { ...process.env, HOME: opts.home, PI_OFFLINE: "1" },
+      env: {
+        ...process.env,
+        // PI_OFFLINE suppresses update checks and telemetry only; model calls still go out.
+        PI_OFFLINE: "1",
+        ...(key ? { ANTHROPIC_API_KEY: key } : {}),
+        HOME: opts.home,
+      },
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child.stdout!.on("data", (chunk: Buffer) => {
       for (const record of this.decoder.push(chunk)) {
         const r = record as PiRecord;
         this.records.push(r);
+        this.receivedAt.push(Date.now());
         for (const w of [...this.waiters]) w(r);
       }
     });
@@ -62,10 +76,16 @@ export class Pi {
     return id;
   }
 
-  /** Resolve with the first record matching `match`, or reject on timeout or early exit. */
-  await(match: (r: PiRecord) => boolean, timeoutMs = this.timeoutMs): Promise<PiRecord> {
-    const seen = this.records.find(match);
-    if (seen) return Promise.resolve(seen);
+  /** The current end of the record log, to pass as `from` so an earlier match is not reused. */
+  mark(): number {
+    return this.records.length;
+  }
+
+  /** Resolve with the first record at or after `from` matching `match`; reject on timeout or exit. */
+  await(match: (r: PiRecord) => boolean, timeoutMs = this.timeoutMs, from = 0): Promise<PiRecord> {
+    for (let i = from; i < this.records.length; i++) {
+      if (match(this.records[i]!)) return Promise.resolve(this.records[i]!);
+    }
     // A process that already exited will never emit again; waiting out the timeout only hides why.
     if (this.exited) {
       return Promise.reject(new Error(`pi already exited\n${this.diagnostics()}`));
@@ -89,10 +109,48 @@ export class Pi {
     });
   }
 
+  /** Call `fn` for every record from now on. Returns an unsubscribe function. */
+  onRecord(fn: (record: PiRecord) => void): () => void {
+    const waiter = (r: PiRecord) => {
+      if (r.type !== "__exit__") fn(r);
+    };
+    this.waiters.add(waiter);
+    return () => this.waiters.delete(waiter);
+  }
+
   /** Send a command and wait for its correlated `response` record. */
   async call(command: Record<string, unknown>, timeoutMs?: number): Promise<PiRecord> {
     const id = this.send(command);
     return this.await((r) => r.type === "response" && r.id === id, timeoutMs);
+  }
+
+  /**
+   * Errors from assistant messages that never completed — an unusable key looks exactly like a
+   * model that declined, so every model-backed spike checks this before reading a verdict.
+   */
+  modelErrors(): string[] {
+    const errors: string[] = [];
+    for (const r of this.ofType("message_end")) {
+      const m = r.message as { role?: string; stopReason?: string; errorMessage?: string } | undefined;
+      if (m?.role === "assistant" && m.stopReason === "error") {
+        errors.push(m.errorMessage ?? "assistant message ended with stopReason error");
+      }
+    }
+    return errors;
+  }
+
+  /** Every record of one type, in arrival order. */
+  ofType(type: string): PiRecord[] {
+    return this.records.filter((r) => r.type === type);
+  }
+
+  /** Wait until at least `n` records of `type` have arrived. Returns how many there are. */
+  async awaitCount(type: string, n: number, timeoutMs: number): Promise<number> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.ofType(type).length < n && !this.exited && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return this.ofType(type).length;
   }
 
   diagnostics(): string {

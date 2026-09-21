@@ -14,7 +14,7 @@ kill criterion. If spike 1 fails, stop and redesign the tool-policy model before
 | --- | --- | --- |
 | Q5 — Pi version | **`@earendil-works/pi-coding-agent@0.86.1`**, latest stable on npm as of 2026-09-21 (published 2026-09-20). **Answered:** "latest stable" as a pinning policy — pin exactly, every later phase pins the same, re-pin deliberately and re-run the spikes. Pi shipped two minor versions in the three days this plan has existed. | Re-pinning re-runs all six spikes. They take under an hour. |
 | Q6 — environment | Node 22 (22.22 verified here), pnpm, `tsx`. **No Docker needed** — phase 0 drives Pi as a bare subprocess. | Nothing in this phase changes. |
-| Q7 — credential | `ANTHROPIC_API_KEY` in the environment, direct API. Model `claude-haiku-4-5` — it is a spike; cost is the point. | A different provider changes only `--provider`/`--model` flags. |
+| Q7 — credential | Direct API. `ANTHROPIC_API_KEY` in the environment, or `ANTHROPIC_KEY` in a git-ignored `spikes/.env` — see §2. Model `claude-haiku-4-5` — it is a spike; cost is the point. | A different provider changes only `--provider`/`--model` flags. |
 | Q9 — who executes | Acceptance is **executable** regardless: every spike exits 0/1 and prints one finding line. Costs nothing extra and serves both readings of Q9. | — |
 
 Spikes **never touch the real `~/.pi/agent/`**. Every script runs with `HOME` pointed at a fresh
@@ -33,20 +33,37 @@ recorded instead of stalling the run.
 spikes/
   package.json            pi-coding-agent@0.86.1, tsx, typebox@1.3.27 — nothing else
   tsconfig.json           strict; run-all.sh gates on `tsc --noEmit`
+  .env.example            copy to .env; ANTHROPIC_KEY=... — .env is git-ignored
   lib/framing.ts          the JSONL decoder, separated so it is assertable without a subprocess
-  lib/rpc.ts              spawn pi, LF-delimited JSONL in/out, await(match), timeout, diagnostics
-  lib/tmp.ts lib/finding.ts   throwaway HOMEs; the finding line + exit code every spike ends on
+  lib/rpc.ts              spawn pi, LF-delimited JSONL in/out, await(match), timeout, diagnostics;
+                          the only place a key is handed to a process
+  lib/env.ts              the key, from the environment then .env; the SKIP exit code
+  lib/tmp.ts lib/check.ts lib/finding.ts   throwaway HOMEs; pass conditions; the finding line and
+                          exit code every spike ends on
   00-harness/   run.ts                 (not a spike — see below)
   01-veto/      ext.ts run.ts
   02-drive/     run.ts
   03-submit/    ext.ts run.ts
-  04-attach/    run.ts                 (observational — see §3.4)
-  05-events/    run.ts
+  04-attach/    run.ts                 (observational, interactive — see §3.4)
+  05-events/    run.ts                 (writes events.jsonl, git-ignored)
   06-trust/     marker.ts ext.ts run.ts
   FINDINGS.md             one line per spike + the script that proves it
   run-all.sh              typechecks, runs every spike present, prints the table, exits non-zero on
-                          any failure; skips model-backed spikes loudly with no ANTHROPIC_API_KEY
+                          any failure; skips model-backed spikes loudly with no key, and tells a
+                          skip (exit 2) from a failure
 ```
+
+**Credentials.** `ANTHROPIC_API_KEY` in the environment wins; otherwise `spikes/.env` supplies
+`ANTHROPIC_KEY`. `.env` is git-ignored and nothing copies it anywhere — 04-attach's generated
+`attach.sh` sources it rather than embedding the value. This is the same rule
+[CLAUDE.md](../../CLAUDE.md) puts on the broker, applied to throwaway code so the habit does not
+have to be retrofitted.
+
+**A spike that cannot reach its question reports no verdict.** An unusable key is indistinguishable
+from a model that declined to call a tool, which on §3.1 is the difference between the design
+working and the provider being down. Every model-backed spike checks the assistant message's
+`stopReason` for `"error"` first, and reports `no verdict: the model call never succeeded (...)`
+rather than a pass or fail it never observed.
 
 **`00-harness` is not one of the six** and answers no design question. It exists because the slice
 rule needs an executable check ([CLAUDE.md](../../CLAUDE.md), "How work is cut") and the framing
@@ -325,11 +342,12 @@ roughly fifteen Haiku turns.
 4. **Whether `--session` is honoured under `--mode rpc`.** The flag exists for interactive mode;
    `switch_session` exists for RPC; the docs are silent on the overlap. Spike 2 now tries the flag
    first and records which works; phase 1 builds on whichever it is.
-5. **Four spikes are written up but not written, for want of a key.** 00-harness and 06-trust pass;
-   01-veto, 02-drive, 03-submit and 05-events all need `ANTHROPIC_API_KEY` and 04-attach needs a
-   person. `spikes/FINDINGS.md` carries what the probe established about each ahead of the run, so
-   none of them starts cold. **The kill criterion (§5.4) is still unevaluated** — nothing may be
-   built on the tool-policy model until 01-veto runs.
+5. ~~**Four spikes are written up but not written, for want of a key.**~~ **All six are written as
+   of 2026-09-21**, and every script has had its failure path exercised against a deliberately
+   invalid key. 00-harness and 06-trust pass; 01-veto, 02-drive, 03-submit and 05-events need a key;
+   04-attach needs a key and a person at two terminals. **The kill criterion (§5.4) is still
+   unevaluated** — writing the script did not evaluate it, only a run does, and nothing may be built
+   on the tool-policy model until 01-veto runs green.
 6. **`agent_end` is not the end of a turn.** It is one low-level run and may be followed by a retry,
    a compaction or a queued continuation; `agent_settled` is the event that says nothing more
    follows automatically. The pass conditions above are written against `agent_end`, which is fine
