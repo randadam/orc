@@ -1,33 +1,36 @@
-# The `tudu` fixture — seeding the target repository
+# The `tudu` fixture — what the target repository is
 
-`randadam/tudu` is the prototype's target repository ([phases.md](phases.md) §15 Q1). It is empty,
-and it will be **seeded by hand** as a purpose-built fixture: a to-do app. Simple enough that the
-seed is a day's work; open-ended enough that the benchmark set can keep adding features for as long
-as the prototype needs.
+`randadam/tudu` is the prototype's target repository ([phases.md](phases.md) §15 Q1), seeded by hand
+on 2026-09-21 at `592f4de` and **pinned at `bf25ac6`** since the author's pnpm fix landed on
+2026-09-22.
 
-This document is what the seed must contain so that **every phase has something real to exercise**,
-and what it must *not* be. It is not the app's design. The app is deliberately ordinary.
+**This document describes the repository as it exists. It contains no plans.** That is deliberate
+([plan.md](plan.md) §8 D9): `tudu` is treated as an ordinary existing app that orc is pointed at,
+and the plans, architecture and feature work that grow it are produced *through the framework* —
+interviewed, planned, sliced and reviewed — because producing them is the thing being demonstrated.
+A roadmap written here by hand is a demonstration deleted.
+
+So this file is a record, updated when the repository changes, and nothing more. It is not the app's
+design; the app is deliberately ordinary.
 
 ---
 
-## 1. Ordinary on purpose
+## 1. What it is
 
-The seed's job is to be a codebase agents can work in, not a showcase. Every choice below favours
-the most conventional option, for one reason: **the implementation tier is Haiku**
-([poc-v2.md](poc-v2.md) §8), and a weak model does its best work in the stack it has seen most.
-Clever framework choices cost turns-to-green and confound the very measurement phase 6 exists to
-take.
+A to-do app. React 19 + Vite + TypeScript, no backend, no persistence, no auth — local component
+state and a test suite over it.
 
-| Choice | Pick | Why this and not something better |
-| --- | --- | --- |
-| Language / manager | TypeScript, **pnpm**, Node 22 pinned via `packageManager` and `engines` | The guard list and image plan assume exactly this ([environments.md](environments.md) §6) |
-| HTTP | **Express** | The most-trodden path for the model writing the code |
-| Tests | **vitest**, plus `supertest` for HTTP | Fast, conventional, one runner for unit / integration / e2e |
-| Storage | A `TodoStore` interface with **two implementations**: in-memory, and Postgres | See §3 — this seam is what lets phases 1–6 stay fast and phase 7 have a real sidecar |
-| Lint / format | eslint + prettier, both with a JSON reporter | Custom-metric fodder for [observability.md](observability.md) §8 |
+| | |
+| --- | --- |
+| Language / manager | TypeScript, pnpm, Node 22 |
+| UI | React 19, Vite 7 |
+| Tests | vitest 3 + Testing Library + jsdom — 46 tests across 7 files |
+| Lint | eslint 9, flat config |
+| Size | 751 lines of source and tests |
 
-Target size at commit zero: **under ~600 lines of source and tests.** If it grows past that while
-seeding, something is being built that a benchmark feature should build instead.
+Ordinary on purpose. The implementation tier is Haiku ([poc-v2.md](poc-v2.md) §8), and a weak model
+does its best work in the stack it has seen most; clever framework choices cost turns-to-green and
+confound the measurement phase 6 exists to take.
 
 ---
 
@@ -35,178 +38,85 @@ seeding, something is being built that a benchmark feature should build instead.
 
 ```
 tudu/
-  package.json               scripts below; packageManager: pnpm@<pinned>; engines.node: 22
-  pnpm-lock.yaml
-  pnpm-workspace.yaml        minimumReleaseAge and onlyBuiltDependencies stated explicitly (§5)
-  .devcontainer/
-    devcontainer.json        §5
-    docker-compose.yml       app + postgres
+  package.json  pnpm-lock.yaml  pnpm-workspace.yaml
+  .github/workflows/ci.yml   lint, typecheck, test:coverage, build — on PRs, and on main after merge
+  .githooks/                 pre-commit: lint + typecheck; pre-push: the full suite
+  scripts/check.sh           all four checks in CI's order, every one run, non-zero if any failed
+  index.html  vite.config.ts  eslint.config.js  tsconfig*.json
   src/
-    app.ts                   express app factory; takes a TodoStore
-    server.ts                listens; reads DATABASE_URL to pick the store
-    todos/
-      model.ts               Todo type, validation
-      service.ts             create / list / complete / delete
-      routes.ts              HTTP surface
-    storage/
-      store.ts               the TodoStore interface
-      memory.ts
-      postgres.ts            + migrations/0001_init.sql
-    metrics.ts               named counters (todos_created, todos_completed) — greppable by ops
-  test/
-    unit/                    service + model against MemoryStore; no services needed
-    integration/             routes against PostgresStore; skip cleanly without DATABASE_URL
-    e2e/                     full HTTP flows with supertest against a booted app
-  benchmark/                 the feature requests, one file each (§4)
-  scripts/
-    deploy.sh                a no-op that prints the version and exits 0 (§3, phase 8)
+    App.tsx                  + App.test.tsx
+    main.tsx  index.css
+    components/              TodoForm, TodoItem, TodoList, TodoFilters — each with a .test.tsx
+    hooks/useTodos.ts        add / toggle / remove / filter over component state  (+ .test.ts)
+    lib/todos.ts             the Todo type and the pure operations on it          (+ .test.ts)
+    test/                    setup.ts, factories.ts
 ```
 
-`package.json` scripts — these names are what `testCmd`, the coverage gate and the custom metrics
-bind to, so they are part of the contract:
+`src/lib/todos.ts` holds `Todo` (`id`, `title`, `completed`), `Filter`, and pure functions —
+`createTodo`, `addTodo`, `toggleTodo`, `removeTodo`, `clearCompleted`, `filterTodos`,
+`remainingCount`. `src/hooks/useTodos.ts` wraps them in state. Between them they are where logic
+lives and where tests are densest.
+
+Scripts, as seeded:
 
 ```
-test              vitest run                      (unit + integration + e2e; integration skips w/o DB)
-test:unit         vitest run test/unit
-test:integration  vitest run test/integration
-test:e2e          vitest run test/e2e
-coverage          vitest run --coverage --coverage.reporter=json
-lint              eslint . --format json
-build             tsc -p .
-metrics           node -e "..." prints the metric names in src/metrics.ts, one per line
-deploy            scripts/deploy.sh
+dev            vite
+build          tsc -b && vite build
+preview        vite preview
+lint           eslint .
+typecheck      tsc -b --noEmit
+test           vitest run
+test:watch     vitest
+test:coverage  vitest run --coverage
 ```
 
 ---
 
-## 3. What each phase needs from the seed
+## 3. The baseline
 
-| Phase | Needs | How the seed provides it |
-| --- | --- | --- |
-| **1** — SDK on subprocesses | A real repo where two agents can do real, small work and a suite that says whether they broke it | The app plus `test:unit`, green in under 10s with no services |
-| **2** — sandboxes | An image built from the repo's own devcontainer, with nothing needing the network at run time | `.devcontainer/` with installs in `onCreateCommand` and **no `postCreateCommand`** — the deliberate test of [environments.md](environments.md) §2's sharp edge |
-| **3** — durability | Sessions worth recording and replaying | Any phase 1 workflow; nothing extra |
-| **4** — walking skeleton | A `testCmd` for prevalidation to discover, a baseline to be green | `test` exits 0 at commit zero (§6) |
-| **5** — real planning | A benchmark set of feature requests a PM can be interviewed about, with real dependency edges | `benchmark/` (§4), pinned by the seed commit |
-| **6** — one real slice | Slice-local tests a senior can add; a coverage report; metric names ops can grep | `test:unit` / `test:integration` split; `coverage`; `metrics` |
-| **7** — scheduler | A compose service so integration tests hit a **sidecar**; features that genuinely conflict | Postgres in `docker-compose.yml`; benchmark pairs that touch the same files (§4) |
-| **8** — fan-out and sign-offs | Subslices small enough for Haiku; E2E tests for QA; a deploy target for the runbook | `test/e2e`; `scripts/deploy.sh` as the no-op deploy the runbook and rollback plan can name |
+Verified at `bf25ac6` on 2026-09-22, by running it:
 
-The storage seam is the one non-obvious decision. **Phases 1–6 never need Postgres running** — unit
-tests use the memory store, and integration tests skip cleanly (not fail) when `DATABASE_URL` is
-unset. **Phase 7's sidecar acceptance** ([phases.md](phases.md) §10 criterion 4) then has something
-real to hit: the same integration tests, now against the compose service, no longer skipping. One
-codebase, two speeds, no flag-flipping between phases.
+1. `pnpm install --frozen-lockfile` succeeds.
+2. **`pnpm test` exits 0 with no services running: 46 tests across 7 files, ~4s.** This is the fast
+   suite prevalidation discovers and `testCmd` binds to.
+3. `pnpm lint`, `pnpm typecheck` and `pnpm build` all exit 0; `pnpm check` runs all four in CI's
+   order and reports every failure rather than only the first.
+
+CI asserts the same on every pull request and on `main` after a merge, and the `pre-push` hook runs
+them before a branch leaves the machine, so the baseline cannot silently rot.
 
 ---
 
-## 4. Benchmark set v0
+## 4. What it does not have
 
-Five feature requests, phrased as a **user would ask for them** — not as specs — because phase 5's
-PM interview turns them into PRDs and that transformation is part of what is measured. Sizes are
-guesses to be corrected by phase 6's turns-to-green.
+Stated as facts about the repository, not as a list of things to build — how any of these arrives,
+if it arrives, is planned through orc rather than here.
 
-| ID | Request | Size | Depends on | Files it will touch |
-| --- | --- | --- | --- | --- |
-| **F1** | "I want to put tags on my to-dos and filter by them" | S | — | `model`, `service`, `routes`, migration |
-| **F2** | "To-dos need due dates, and I want to see what's overdue" | M | — | `model`, `service`, `routes`, migration |
-| **F3** | "Show me what's due in the next N days" | S | F2 | `service`, `routes` |
-| **F4** | "Some to-dos repeat — weekly, monthly. When I complete one, the next should appear" | L | F2 | `model`, `service`, `routes`, migration |
-| **F5** | "Let me complete or delete a bunch of to-dos at once" | S | — | `service`, `routes` |
+- No HTTP surface, no server, no storage beyond React state.
+- No `.devcontainer/`.
+- No integration or e2e tier; the Testing Library tests drive the rendered app, which for an SPA is
+  the honest meaning of end-to-end.
+- No `test:unit`, no `coverage` script emitting a machine-readable reporter, no `lint --format json`,
+  no metrics module, no deploy script.
+- No `engines.node` field. (`packageManager` is `pnpm@10.33.0`.)
 
-Three properties are engineered in, and should be preserved when the set grows:
-
-- **Real dependency edges.** F3 and F4 cannot start until F2 has merged — a capability dependency,
-  not a file one ([poc-v2.md](poc-v2.md) §2).
-- **Designed conflicts.** F1, F2 and F5 are independent and all touch `service.ts` and `routes.ts`.
-  Run concurrently, at least one genuine merge conflict is near-certain — which is exactly what
-  phase 7's acceptance criterion 2 requires and would otherwise have to wait for by luck.
-- **A spread of sizes.** F1/F3/F5 are one-session slices; F4 is the one likely to fan out into
-  subslices at phase 8, and the one most likely to show whether Haiku can carry implementation.
-
-The canonical copy lives in `tudu/benchmark/F*.md`, committed with the seed, so a request is pinned
-to the commit it was written against. orc's records reference them by id and commit.
+Some phase acceptance criteria assume things in this list exist — phase 2 builds sandbox images from
+a repository's `.devcontainer/` (D5), and phase 7 runs integration tests against a compose sidecar
+([phases.md](phases.md) §10 criterion 4). Those are dependencies to resolve when the phase arrives,
+and §5 item 2 is where that is tracked.
 
 ---
 
-## 5. The devcontainer, exactly
+## 5. Open items
 
-This file is the phase 2 image source and the first real exercise of D5, so its shape matters:
-
-```jsonc
-{
-  "name": "tudu",
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "app",
-  "runServices": ["app", "db"],
-  "workspaceFolder": "/workspace",
-  "features": {
-    "ghcr.io/devcontainers/features/node:1": { "version": "22" }   // pinned digest at seed time
-  },
-  "onCreateCommand": "corepack enable && pnpm install --frozen-lockfile",
-  "remoteEnv": { "DATABASE_URL": "postgres://tudu:tudu@db:5432/tudu" }
-  // deliberately absent: postCreateCommand, initializeCommand, privileged, capAdd, mounts,
-  // forwardPorts, runArgs — every field the allowlist rejects (environments.md §3)
-}
-```
-
-Installation happens in `onCreateCommand`, which prebuilds; nothing runs at container start that
-needs the registry. That is the whole reason the seed can be built once and run with no network.
-
-`pnpm-workspace.yaml` states the two supply-chain settings **explicitly at their defaults** —
-`minimumReleaseAge: 1440` and `onlyBuiltDependencies: []` — so the guard list in
-[environments.md](environments.md) §6 has real fields to protect, and a diff that weakens them is
-visible as a diff rather than as the appearance of a new key.
-
----
-
-## 6. The baseline
-
-"Green at commit zero" means, precisely:
-
-1. `pnpm test` exits 0 with **no services running**: unit and e2e pass, integration reports
-   *skipped* (not failed, not errored). Prevalidation treats skipped as green and records the count.
-2. `pnpm test` exits 0 **with the compose db up**, integration included, in under 60s.
-3. `pnpm lint`, `pnpm build`, `pnpm coverage` all exit 0.
-4. `pnpm metrics` prints at least two names, and each appears in `src/metrics.ts`.
-
-Item 1 is what phases 1–6 run against. Item 2 is what phase 7 runs against. Both are asserted by
-the seed's own CI (a single GitHub Actions job) so the baseline cannot silently rot between phases.
-
----
-
-## 7. What the seed must not be
-
-- **Not a finished app.** Under ~600 lines. Features arrive through the benchmark set, or the
-  benchmark set is measuring nothing.
-- **Not clever.** No custom framework, no decorators, no code generation, no monorepo. Ordinary
-  Express, ordinary vitest.
-- **Not networked at test time.** Nothing in `test/` fetches anything. The sandbox has no network.
-- **Not carrying secrets.** The Postgres credentials are the fixture's and appear in the compose
-  file on purpose; nothing else credential-shaped exists in the repo.
-- **Not pre-solving benchmark features.** No `tags` column "for later." The seed contains a to-do
-  with a title and a done flag, and that is all.
-
----
-
-## 8. Sizing and sequence
-
-A day to write by hand, including the benchmark files and the CI job. It is the first piece of work
-after phase 0 and before phase 1's first real run — phase 1's plan assumes it exists at the commit
-it pins.
-
----
-
-## 9. Open items
-
-1. **Express versus something smaller.** Express is picked for model familiarity; if phase 6 shows
-   Haiku handling it fine, the choice never matters. If a lighter framework would measurably help,
-   that is a benchmark-set question, not a seed question.
-2. **E2E means HTTP-level here.** `test/e2e` drives the booted app over HTTP with supertest. There is
-   no browser. For a to-do API that is the honest meaning of end-to-end; if the app grows a UI, QA's
-   E2E plan grows with it.
-3. **Sizes in §4 are guesses.** Phase 6 corrects them; phase 8's fan-out decisions depend on F4
-   actually being large.
-4. **Migration tooling.** Plain SQL files applied by the Postgres store on connect is the
-   conventional-and-tiny choice; whether the benchmark features need something more is unknown
-   until F1 adds a column.
+1. ~~**The repository is npm-driven, against the pnpm rule.**~~ **Fixed by the author at
+   `bf25ac6`, 2026-09-22.** `package-lock.json` is gone, CI installs with
+   `pnpm install --frozen-lockfile` and runs `pnpm` scripts, and `packageManager` pins
+   `pnpm@10.33.0`. The guard list in [environments.md](environments.md) §6 now rests on pnpm
+   semantics that actually hold. Re-pinned in [phases/phase-1.md](phases/phase-1.md) §1.3.
+2. **Phases 2 and 7 assume repository features that do not exist** (§4). Neither affects phase 1.
+   Under D9 the answer is not written here; it is planned when the phase is reached.
+3. **`pnpm-workspace.yaml` carries `allowBuilds: { esbuild: false }`**, where
+   [environments.md](environments.md) §6's guard list names `minimumReleaseAge` and
+   `onlyBuiltDependencies`. Same intent, newer pnpm spelling. The guard list needs to name whichever
+   form the pinned pnpm uses — that is an orc-side fix, not a `tudu` one.

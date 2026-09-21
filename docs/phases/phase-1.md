@@ -53,10 +53,18 @@ immediately; Pi's built-in tools are `read`, `bash`, `powershell`, `edit`, `writ
 
 ### 1.3 The seed
 
-`randadam/tudu` exists at the commit this phase pins, seeded per [fixture.md](../fixture.md), with
-`pnpm test:unit` green in under ten seconds and no services running. **The pinned sha is
-`<seed-sha>` until the seed lands**; it is written in exactly three places — this line,
-`examples/loop-and-escape/README.md`, and `accept/phase1/seed.ts` — and nowhere else.
+`randadam/tudu` was seeded on 2026-09-21 and **this phase pins `bf25ac6`**. It is a React SPA,
+an ordinary one **carrying no plans by design** ([plan.md](../plan.md) §8 D9) — what it should
+become is produced through orc. The sha is written in exactly three places: this line,
+`examples/loop-and-escape/README.md`, and `accept/phase1/seed.ts`, and nowhere else.
+
+**The fast suite is `pnpm test`, not `pnpm test:unit`** — the seed has no `test:unit`, and `test` is
+46 tests across 7 files in **about 4s with no services**, verified by running it at that commit. That is what
+`testCmd` binds to throughout this plan. `pnpm lint`, `pnpm typecheck` and `pnpm build` also exit 0.
+
+The pnpm fix has landed, which is why the pin is `bf25ac6` and not the seed commit: no
+`package-lock.json`, CI on `pnpm install --frozen-lockfile`, `packageManager` set to `pnpm@10.33.0`,
+and the checks shifted left into git hooks ([fixture.md](../fixture.md) §5 item 1).
 
 Slices 1.0–1.10 do not need the seed: their tests run against a git repository the test itself
 creates. Only slices 1.11–1.12 and the live acceptance runs need `tudu`.
@@ -333,7 +341,7 @@ run.
 {
   "version": 1,
   "id": "tests:2",
-  "cmd": "pnpm test:unit", "cwd": "agents/backend-01/workspace",
+  "cmd": "pnpm test", "cwd": "agents/backend-01/workspace",
   "exitCode": 1, "signal": null,
   "stdout": "…", "stderr": "…", "truncated": false,     // each capped at 1 MiB
   "sha": "<git HEAD in cwd>", "dirty": true,
@@ -602,12 +610,12 @@ export const config = defineConfig({
 
 export default defineWorkflow("loop-and-escape", async (orc, input: { task: string }) => {
   const impl = await orc.agent("backend").session();
-  await impl.send(`${input.task}\n\nRun \`pnpm test:unit\` yourself before you stop.`);
+  await impl.send(`${input.task}\n\nRun \`pnpm test\` yourself before you stop.`);
 
   let work: AgentResult;
   for (let round = 1; ; round++) {
     work = await impl.next();
-    const tests = await orc.verify(`tests:${round}`, { cmd: "pnpm test:unit", cwd: impl.workspace });
+    const tests = await orc.verify(`tests:${round}`, { cmd: "pnpm test", cwd: impl.workspace });
     const review = await orc.step(`review:${round}`,
       { schema: Review, inputs: { diff: work.diff, green: tests.exitCode === 0 } },
       ({ diff, green }) => orc.agent("reviewer").ask(reviewPrompt(diff, green), { schema: Review }));
@@ -629,17 +637,19 @@ export default defineWorkflow("loop-and-escape", async (orc, input: { task: stri
     await impl.send(`Address these blocking issues:\n${review.blocking.join("\n")}`);
   }
 
-  const final = await orc.verify("tests:final", { cmd: "pnpm test:unit", cwd: impl.workspace });
+  const final = await orc.verify("tests:final", { cmd: "pnpm test", cwd: impl.workspace });
   await impl.close();
   return { green: final.exitCode === 0, diff: work.diff };
 });
 ```
 
 The example's `README.md` states the pinned `tudu` sha and the task the acceptance run uses. The
-task must be real, small, and **not one of the benchmark features** in
-[fixture.md](../fixture.md) §4: the suggested one is *"Reject empty or whitespace-only titles
-with a 400 and a unit test."* Check it is not already true at the seed commit; if it is, pick
-another of the same size.
+task must be real and small — a throwaway used to prove the runner works, not a feature anyone
+planned: the suggested one is *"Cap to-do titles at 200 characters, with a unit test."* It lands in
+`src/lib/todos.ts` beside `createTodo`, and `pnpm test` is the gate.
+
+The previously suggested task — rejecting empty or whitespace-only titles — **is already true at
+`bf25ac6`**: `createTodo` trims and returns `null`. Check again if the pin moves.
 
 Acceptance 1 says this must read like ordinary TypeScript to someone who has not seen orc. The
 test is: every comment in the file is about the task or the control flow, and none explains an
@@ -647,9 +657,10 @@ test is: every comment in the file is about the task or the control flow, and no
 
 ### 8.2 `fan-out`
 
-Three `reader` agents (read-only tools) answer one question each about `tudu` — what `service.ts`,
-`routes.ts`, and `store.ts` do — via `ask()` with a small schema, under `orc.parallel` with
-`maxConcurrency: 2`, then one `orc.step` assembles the answers. Cheap, and exercises concurrency,
+Three `reader` agents (read-only tools) answer one question each about `tudu` — what
+`src/lib/todos.ts`, `src/hooks/useTodos.ts` and `src/components/TodoList.tsx` do — via `ask()` with
+a small schema, under `orc.parallel` with `maxConcurrency: 2`, then one `orc.step` assembles the
+answers. Cheap, and exercises concurrency,
 per-role policy, and `parallel`'s cap in one run.
 
 ---
@@ -698,7 +709,7 @@ criterion in phases.md §4:
 | 2 | A deny-listed tool never executes | `02-deny.test.ts`: slice 1.7's live test |
 | 3 | Memoization and invalidation | `03-memo.test.ts`: slice 1.4's test, run through the CLI on the agentless workflow |
 | 4 | Escalation answered once is not re-asked | `04-escalate.test.ts`: slice 1.5's test |
-| 5 | `verify` returns an exit code the agent did not produce | `05-verify.test.ts`: slice 1.6's test, plus one live check that a `backend` agent told to make `pnpm test:unit` pass by editing the test command cannot affect `verify`'s record |
+| 5 | `verify` returns an exit code the agent did not produce | `05-verify.test.ts`: slice 1.6's test, plus one live check that a `backend` agent told to make `pnpm test` pass by editing the test command cannot affect `verify`'s record |
 | 6 | A trace exists with the nesting and the hash | `06-trace.test.ts`: on the run from test 1, `trace.jsonl` has an `orc.run` span with `orc.agent` → `orc.turn` → `orc.tool` descendants and the resource hash equals `config.json`'s |
 
 ---

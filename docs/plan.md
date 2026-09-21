@@ -588,6 +588,34 @@ Three boundaries hold it in place:
   which is a quality improvement rather than a cost saving.
 - **It may veto, never permit.** A Jev gate can only narrow what frozen policy already allows.
 
+### D9 — The target repository carries no plans (decided)
+
+`randadam/tudu` was seeded on 2026-09-21 as an ordinary React SPA — no backend, no storage seam, no
+devcontainer — and **it is treated as an existing app that orc is pointed at.** No roadmap, no
+benchmark set, no architecture for what it should become is written by hand.
+
+That is the point of the exercise. Producing plans, architectures and stack decisions is the work
+orc exists to do, and [poc-v2.md](poc-v2.md)'s whole workflow — interview, PRD, plan, review, slice —
+is the thing being demonstrated. A fixture that arrives with its feature list and its target
+architecture already written is a fixture where the interesting half of the demonstration has
+already happened offstage, by hand, unmeasured. Handing agents a repo that *needs* an API and
+letting the framework decide it needs one is a harder claim and a more honest one.
+
+[fixture.md](fixture.md) is therefore a **record of what the repository is**, updated when it
+changes, containing no plans. Its §4 lists what the repository does not have, as facts rather than
+as a backlog.
+
+Two consequences, and the second is a real cost:
+
+- **Nothing is added to `tudu` by hand** once a phase can plan it through orc. The exception is a
+  piece that blocks a phase outright before orc can produce it, and that call is recorded in
+  fixture.md's open items rather than made quietly in a commit.
+- **Some phase acceptance depends on work that has not been planned yet.** Phase 2 builds images
+  from a repository's `.devcontainer/` (D5) and phase 7 wants integration tests against a compose
+  sidecar; `tudu` has neither. These are resolved when the phase is reached, by planning them
+  through the framework — which is either the demonstration working or the prototype stalling, and
+  that is the bet D9 makes.
+
 ## 9. Open questions
 
 Two remain, plus one the POC needs immediately:
