@@ -66,7 +66,7 @@ instead of maintaining a fork.
    ┌────────────────┐   │                                              │
    │ .pi/extensions │   │   orcd            broker                     │
    │ .pi/skills     │──▶│   ├ run store     ├ model gateway  ──┐       │
-   │ orc.yaml       │   │   ├ scheduler     ├ egress gateway ──┼──▶ internet
+   │ orc.config.ts  │   │   ├ scheduler     ├ egress gateway ──┼──▶ internet
    └────────────────┘   │   ├ event bus     └ policy engine    │   (allowlisted)
                         │   └ artifact svc                     │
                         │       │                        Secrets Manager
@@ -101,7 +101,7 @@ the agent plane reaches the internet except through the broker.**
 | `orc-runner` | TypeScript | inside each sandbox | Supervises `pi` over RPC, bridges orchestration tools to `orcd`, streams events |
 | `@orc/pi` | TypeScript | inside each sandbox | The Pi package: provider override, orchestration tools, `tool_call` policy gate |
 | `@orc/plugin-sdk` | TypeScript | developer's repo | Types + helpers for writing orchestration plugins; `defineWorkflow` for code-driven runs |
-| `pi-kit` image | Dockerfile | ECR | Base sandbox image: pi, runner, toolchains, internal CA |
+| sandbox image | `devcontainer build` + derived layer | ECR | Repo's own `.devcontainer/` plus pi, runner, internal CA ([environments.md](environments.md)) |
 | `infra` | AWS CDK (TS) | — | VPC, ECS, DynamoDB, S3, Secrets Manager, IAM, observability |
 
 Go for the broker is a deliberate exception to an otherwise TypeScript stack: it is a long-lived,
@@ -148,7 +148,9 @@ Each agent gets an **ECS Fargate task** in `awsvpc` mode:
   simply does not exist. The security group permits egress to exactly two destinations: the
   broker's internal NLB and `orcd`'s internal NLB.
 - **Read-only root filesystem** with writable tmpfs at `/workspace` and `/tmp`.
-- **No Docker socket.** Agents that need containers get a nested, rootless runtime, or are denied.
+- **No Docker socket.** Compose services from the repo's devcontainer run as sidecars in the same
+  network namespace, started by the runner — the agent reaches them on `localhost` and holds no
+  Docker access ([environments.md](environments.md) §4).
 
 Fargate over EC2/Firecracker for v1: per-task IAM and per-task ENIs are exactly the primitives the
 isolation model needs, with no node fleet to manage. Its cost is cold start (~30–60s). Milestone 4
@@ -275,29 +277,34 @@ Both compile to the same control-plane calls. `defineWorkflow` is the one piece 
 ours rather than Pi's — it is a thin deterministic driver over the same `orc_*` primitives, so an
 LLM-driven and a code-driven run are indistinguishable to `orcd`.
 
-**Policy is declared, not coded.** `orc.yaml` at the repo root is the security-relevant surface, and
-it is reviewed like code:
+**Policy is a value; logic is code — both TypeScript.** orc has no YAML (§8, D2). `orc.config.ts` at
+the repo root is the security-relevant surface. It is TypeScript that *evaluates to a static value*,
+resolved once before any agent starts, then frozen and hashed:
 
-```yaml
-version: 1
-roles:
-  backend:
-    image: ghcr.io/acme/pi-kit-node:20
-    model: { provider: bedrock, id: anthropic.claude-opus-4-5 }
-    tools: { allow: [read, write, edit, bash, orc_*], deny: [web_fetch] }
-    egress:
-      allow: [github.com, registry.npmjs.org, "*.amazonaws.com"]
-    secrets:
-      - { name: GITHUB_TOKEN, scope: [github.com], mode: inject }
-limits: { max_agents: 12, wall_clock: 45m, usd_budget: 25 }
+```ts
+// orc.config.ts — evaluated once, before any agent starts, then frozen and hashed
+import { defineConfig, role } from "@orc/sdk";
+
+export default defineConfig({
+  roles: {
+    backend: role({
+      // image defaults to the repo's built devcontainer digest; override only to differ
+      model: { provider: "bedrock", id: "anthropic.claude-opus-4-5" },
+      tools: { allow: ["read", "write", "edit", "bash", "orc_*"], deny: ["web_fetch"] },
+      egress: ["github.com", "registry.npmjs.org", "*.amazonaws.com"],
+      secrets: [{ name: "GITHUB_TOKEN", scope: ["github.com"], mode: "inject" }],
+    }),
+  },
+  limits: { maxAgents: 12, wallClock: "45m", usdBudget: 25 },
+});
 ```
 
-`mode: inject` is the point: the secret is named in policy but *resolved only inside the broker*.
-`orc.yaml` never contains a secret value, and neither does the sandbox.
+`mode: "inject"` is the point: the secret is named in policy but *resolved only inside the broker*.
+The config never contains a secret value, and neither does the sandbox.
 
 **Trust.** Pi's `project_trust` event means a repo's `.pi/` resources are not loaded until approved.
-We bind that to orc's own model: a plugin change alters `orc.yaml`'s policy hash, and a run whose
-policy hash is unapproved requires explicit promotion. Orchestration plugins are code with network
+We bind that to orc's own model: a plugin change alters the policy hash, and a run whose policy hash
+is unapproved requires explicit promotion. Orchestration plugins are code with network
 and credential implications, and they get reviewed as such.
 
 ---
@@ -305,6 +312,11 @@ and credential implications, and they get reviewed as such.
 ## 5. Milestones
 
 Each milestone has exit criteria; none is "done" on code alone.
+
+> **Start with the POC, not M1.** [poc.md](poc.md) defines a ~4-week prototype that proves the
+> load-bearing claims (harness fit, tool gating, credential isolation, orchestration ergonomics)
+> while deferring AWS, the egress gateway, and the model catalog behind named seams. The milestones
+> below describe the full system; the POC is how it starts.
 
 ### M0 — Spike: drive Pi as a subprocess (1 week)
 
@@ -346,7 +358,7 @@ appears in the audit log. This exercise is the milestone, not a checkbox on it.
 ### M4 — Scale and developer experience (3 weeks)
 
 Warm sandbox pools to cut cold start. Cost and token accounting per run/agent, enforced against
-`limits`. OpenTelemetry traces spanning orchestrator → child agents → model calls. `orc attach`
+`limits`. OpenTelemetry traces spanning orchestrator → child agents → model calls ([observability.md](observability.md)). `orc attach`
 for live steering of a running agent (Pi's `steer` over RPC). GitHub App trigger.
 
 *Exit:* p50 agent start under 10s. A run that exceeds `usd_budget` halts and reports rather than
@@ -370,7 +382,7 @@ adapters — only if the runner's RPC bridge proves genuinely harness-agnostic.
 
 | Risk | Assessment | Response |
 | --- | --- | --- |
-| **Pi is a fast-moving upstream; extension APIs shift** | Likely | Pin exact versions in `pi-kit`. Keep our Pi surface area narrow (registerTool, registerProvider, `tool_call`, RPC) and behind an adapter in `@orc/pi`. Contract-test against upstream weekly in CI. |
+| **Pi is a fast-moving upstream; extension APIs shift** | Likely | Pin exact versions in the derived image layer. Keep our Pi surface area narrow (registerTool, registerProvider, `tool_call`, RPC) and behind an adapter in `@orc/pi`. Contract-test against upstream weekly in CI. |
 | **Prompt injection drives an agent to abuse its *allowed* capabilities** | Certain to be attempted | Out of scope for prevention, by Pi's own honest admission. Contain it: narrow allowlists, per-role least privilege, human approval gates on irreversible actions (push to default branch, deploy), full audit. |
 | **Sentinel leaks to an attacker outside the VPC** | Possible | It is worthless there: the broker is not internet-reachable, sentinels are run-bound with short TTL, and validation checks source. Rotate per run. |
 | **TLS-intercepting egress proxy breaks tooling (pinned certs, mTLS upstreams)** | Likely in practice | Support CONNECT-passthrough for allowlisted hosts that must not be intercepted — policy decision per host, logged. Accept that no-inspection hosts get host-level allowlisting only. |
@@ -385,24 +397,202 @@ adapters — only if the runner's RPC bridge proves genuinely harness-agnostic.
 - **A new plugin format.** Pi packages, as specified upstream.
 - **A hosted multi-tenant SaaS.** v1 is single-tenant, deployed into the user's own AWS account.
   Multi-tenancy changes the isolation model substantially and should not be retrofitted casually.
-- **A web UI.** CLI and API first. A UI is a client of the event stream, buildable later by anyone.
+- **A web UI in v1.** CLI and API first — but the console is now planned as the first client of a
+  shared intake/interaction/observation surface, not as a bespoke front end
+  ([console.md](console.md)). The principle is unchanged: a UI is a client, buildable by anyone.
 - **Preventing prompt injection.** Containing its blast radius is the whole security posture.
+- **Measuring maintainability or technical debt.** Unsolved for human teams; every proxy is
+  contested and gameable. orc ships a custom-metric hook instead of a bad built-in
+  ([observability.md](observability.md) §8).
 
-## 8. Open questions
+## 8. Decisions
 
-These need answers before M2, and two of them change the architecture:
+### D1 — Workspaces: fresh clone per agent (decided)
 
-1. **Model backend — Bedrock or direct API keys?** Bedrock + SigV4 in the broker removes long-lived
-   model credentials from the system entirely and is the recommended default. Direct keys are
-   needed if the model lineup we want isn't on Bedrock. *This decides the model gateway's design.*
-2. **Primary orchestration style — LLM-driven or code-driven?** Both are planned, but which is the
-   documented default shapes the SDK's ergonomics and the examples. Recommendation: code-driven
-   default, LLM-driven as the escape hatch.
-3. **Where do agents get their workspace?** Fresh clone per agent (isolated, slow, simple) versus a
-   shared EFS workspace with a coordination protocol (fast, contended, considerably harder).
-   Recommendation: fresh clone in v1, measure the pain before adding EFS.
-4. **What scale are we building for?** 10 concurrent agents and 100 concurrent agents are different
+Each agent gets its own workspace, materialized by the runner as a clone at a pinned ref through
+the broker's git path. No shared filesystem between agents in v1.
+
+This buys isolation for free: two agents cannot corrupt each other's working tree, a crashed
+sandbox takes nothing with it, and every agent's starting state is exactly reproducible from a ref.
+It costs clone time per agent — mitigated with a shared git cache in the image and `--depth`/partial
+clone for large repos, both cheap and local.
+
+The alternative, a shared EFS workspace, is faster to start and considerably harder to get right:
+concurrent writes to one tree need a coordination protocol, and agents that block on each other
+stop being independently schedulable. Revisit only if clone time measurably dominates run time,
+which for multi-minute agent tasks it will not.
+
+Fan-in happens through **artifacts and diffs**, not a shared tree — `orc_artifact` and the
+`inputs:` field on a run are the supported channels for moving work between agents.
+
+### D2 — TypeScript everywhere; no YAML (decided)
+
+Orchestration logic is TypeScript. Configuration is TypeScript. There is no YAML in orc, and no
+declarative graph format.
+
+The reasoning is about expressiveness, not taste. Real agent lifecycles contain cycles that return
+to earlier phases, escape hatches on accumulated state (attempt counts, spend), and branches taken
+on the *content* of a previous result. Declarative formats cannot express those, so they acquire
+`if:` expressions, `${{ }}` interpolation, and eventually a half-specified scripting language —
+producing a bad programming language with no type checker, no debugger, and no tests. Starting from
+TypeScript means loops, `try/catch`, and early returns are already there, correct, and tooled.
+
+The security model still needs a policy that is fixed and reviewable before anything runs. That is
+preserved by separating **when** code is evaluated rather than what format it is written in:
+
+- **`orc.config.ts` is policy.** Evaluated once by the control plane in a sandboxed Node context
+  with no network and no run state, then snapshotted to JSON, hashed, and frozen. It is a config
+  file in the sense `vite.config.ts` is one: TypeScript that produces a value. Helper functions and
+  shared constants are fine; branching on run state is impossible, because there is no run yet.
+- **`.pi/extensions/*.ts` is logic.** Ordinary code, executed throughout the run.
+
+Because policy is frozen before the first agent starts, a plugin cannot widen its own network or
+secret policy mid-run — the property the discarded "yaml wins over code" rule existed to protect.
+Runtime **narrowing** is allowed (a workflow may grant a step less than its role permits); widening
+is rejected by the control plane.
+
+What stays out of config: conditions, loops, phases, steps, retries, DAGs. Config answers "what is
+this role allowed to do." Workflows answer "what happens, in what order, and when do we go back."
+
+### D3 — Code-driven orchestration is the default (decided)
+
+Workflows are TypeScript functions. The LLM-driven style — an orchestrator agent holding `orc_*`
+spawn/await tools and planning its own delegation — is deferred past the POC entirely.
+
+An LLM planning a fan-out of expensive agents is a reliability and cost risk worth taking only when
+the work is genuinely open-ended. Where an agent's judgement is needed mid-run, it returns
+*structured output* the workflow acts on (a senior returning `subslices: Slice[] | null`), rather
+than being handed a spawn tool. Same outcome, decision visible in the workflow rather than buried in
+a transcript, and no new capability surface.
+
+### D4 — Human-in-the-loop is escalation plus attach (decided)
+
+One mechanism for the human to intervene, one for the human to participate.
+
+`orc.escalate(reason, context)` suspends the run, surfaces the question, and records the answer as
+an artifact keyed to its step — so a resumed run does not re-ask. Options are `abort`, `proceed`
+(risk recorded), or `amend` (edit the artifact and resume from that step). Every loop cap, failed
+slice, unresolvable conflict and cycle escalates rather than failing silently or guessing.
+
+For phases that need a human *in* the conversation, `orc attach <agent>` runs `pi --session <path>`
+against that agent's live session, giving the real Pi TUI. No bespoke chat UI. Pi's
+`extension_ui_request` over RPC is the path to routing prompts elsewhere later.
+
+### D5 — Environments come from the repo's dev container (decided)
+
+The sandbox image is built from the repository's own `.devcontainer/`, outside the sandbox, and the
+sandbox installs nothing. Full design in [environments.md](environments.md).
+
+An orc-owned image hand-built per target repo works for exactly one repo and puts orc permanently in
+the business of knowing toolchains. The [Dev Container spec](https://containers.dev) already holds
+that knowledge, usually written by whoever maintains the build, and its prebuild boundary
+(`onCreateCommand` / `updateContentCommand` run at build; the container start does not) is exactly
+the boundary the no-egress property needs.
+
+Two consequences worth stating here rather than burying:
+
+- **`devcontainer.json` is untrusted repository input**, not configuration we author. It is filtered
+  through an allowlist at policy-resolution time and folded into the policy hash. `initializeCommand`
+  is rejected unconditionally — it runs on the *host*, which here is the control plane holding the
+  credentials.
+- **Compose services become sidecars in the agent's network namespace**, never a Docker socket the
+  agent controls. An ECS task is a compose project, so this maps to Fargate without changing the
+  isolation model.
+- **Agents can request packages the environment lacks**, as data resolved outside the sandbox rather
+  than an install performed inside it. The resulting manifest change lands in the diff and is
+  reviewed like any other code change — which is the real control, since the risk is what reaches
+  the user's production build, not sandbox escape.
+
+### D6 — Observability is OpenTelemetry, emitted outside the sandbox (decided)
+
+Instrumented with the OTEL SDK from the first milestone, borrowing `gen_ai.*` semantic conventions
+for the agent/tool/model layer and `orc.*` for orchestration concepts they do not model. Full design
+in [observability.md](observability.md).
+
+Two properties matter more than the tooling choice:
+
+- **Nothing inside the sandbox emits a metric that counts.** The same rule as verification: a number
+  the model can author is not evidence. Spans come from the runner (derived from Pi's RPC event
+  stream, so Pi needs no instrumentation), costs from the broker (the only path to a model, already
+  counting tokens for budget), and git facts from the integration step.
+- **Comparison is keyed on the policy hash**, which already identifies a configuration — models,
+  effort, caps, prompts, skills. No second notion of identity to drift from it.
+
+The purpose is to settle the empirical questions the plan leaves open, so the headline metrics are
+completion-without-escalation, cost per *completed* run, and human interventions per run.
+
+Output *quality* is not measured automatically: a human reads the artifacts, accepted rather than
+deferred, since an LLM judge over them inherits every failure mode of LLM review gates. The staged
+answer is attaching incidents to the commits that caused them — a lagging measure that needs only
+two cheap properties now (durable run records, keyed by the commit shas they produced). Subjective
+measures like maintainability and technical debt are explicitly out of scope — unsolved for human
+teams too — with a declared custom-metric hook as the supported alternative.
+
+### D7 — The console is a client of a shared surface, not a UI project (decided)
+
+A non-technical user needs a way to plan a feature without `orc attach pm` dropping them into a
+terminal. The failure mode is building that as a bespoke front end wired to CLI internals, which
+makes JIRA the second integration path and PagerDuty the third. Full design in
+[console.md](console.md).
+
+So orc exposes three surfaces — **intake** (work items, from a console form, JIRA, PagerDuty or the
+CLI), **interaction** (the escalation queue), and **observation** (status and metrics) — and every
+client, the console included, is a client of those. "Integrate with JIRA later" then means writing a
+connector, not a rewrite.
+
+Three things follow:
+
+- **Requester and operator are different audiences** sharing a data model. Requester views ship
+  first; a metrics console built before there are runs to compare displays noise authoritatively.
+- **A work item's description is untrusted input**, the same category as repository content — and
+  intake is a wider door than the repo, since filing a ticket usually needs less access than
+  committing code.
+- **Write-back is half of every connector.** A ticket that spawns a run gets progress comments and a
+  PR link, or it is a trigger rather than an integration.
+
+The POC needs no work for this: run state is already on disk keyed by step id because resume demands
+it, and the console reads the same records.
+
+### D8 — A decision layer, with Jev as its first implementation (decided)
+
+orc makes many small judgements that are not generation — finding severity, conflict triage,
+escalation routing, tool-call risk. Each is currently an expensive LLM call for a small decision, or
+a crude static rule because an LLM would be too slow. [Jev](https://typesafe.ai), TypeSafe AI's
+System One model, returns a typed decision with calibrated confidence in 70–500ms and fits that
+shape. Full design in [decision-layer.md](decision-layer.md).
+
+Jev entered early access on 2026-09-15, so what is decided is a **`Decider` interface** with Jev as
+one implementation and an LLM as the other. Jev is off by default, enabled per question after shadow
+measurement, and its absence degrades orc rather than breaking it.
+
+Three boundaries hold it in place:
+
+- **A typed decision is still a model output.** "Green" remains an exit code from the runner. Jev
+  routes and triages; it never adjudicates correctness.
+- **Jev grades, the LLM explains.** Where the design requires written rationale, Jev cannot supply
+  it — so the LLM writes the finding and its reasoning while Jev assigns the severity, on one ruler
+  across every reviewer and round. That makes the loop gate and the convergence metric meaningful,
+  which is a quality improvement rather than a cost saving.
+- **It may veto, never permit.** A Jev gate can only narrow what frozen policy already allows.
+
+## 9. Open questions
+
+Two remain, plus one the POC needs immediately:
+
+1. **Model backend — which AWS path, and when?** Signing with an IAM role removes long-lived model
+   credentials entirely, and there are three ways to get it. **Claude Platform on AWS** is
+   Anthropic-operated with SigV4 and IAM but same-day first-party API parity and unprefixed model
+   IDs — the simplest path, and not the same thing as Bedrock. **Bedrock** is partner-operated and
+   earns its place for the open-weight catalog ([proxy-design.md](proxy-design.md) §3.4).
+   **Direct API keys** are fine to start: the broker holds the only copy, and the migration is one
+   function there (see below). Caching, effort and structured outputs are available on all three, so
+   the cost model survives the move.
+
+   *Starting on API keys does not foreclose this*, provided the broker stays in the request path
+   from day one — see [poc.md](poc.md) §4.
+
+2. **What scale are we building for?** 10 concurrent agents and 100 concurrent agents are different
    schedulers. Assumed: tens, single-digit concurrent runs.
-5. **Human-in-the-loop gates — where?** Pi's extension UI sub-protocol (`extension_ui_request` over
-   RPC) gives us a natural approval channel from inside a sandbox out to an operator. Worth wiring
-   in M4 if approval gates on irreversible actions are a requirement rather than a nicety.
+3. **Which repository is the POC target?** Blocking for the POC, not for the architecture. It
+   determines the sandbox image contents, the toolchain, and the test command — see [poc.md](poc.md)
+   §3, which pins the POC to a single pre-baked repo rather than pulling the egress gateway forward.

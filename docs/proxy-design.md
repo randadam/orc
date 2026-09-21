@@ -108,23 +108,126 @@ oracle for probing key validity.
 Streaming responses (SSE) proxy through unbuffered. The broker parses only enough of the stream to
 extract token usage for budget accounting.
 
-### 3.4 Bedrock: the better default on AWS
+### 3.4 SigV4 on AWS: three paths, and the simplest one is not Bedrock
 
 Direct provider keys mean a long-lived secret exists *somewhere* — in Secrets Manager, in the
-broker's memory, in a rotation runbook. Amazon Bedrock removes it:
+broker's memory, in a rotation runbook. Signing with an IAM role removes it. There are three ways to
+get there, and the design should not assume Bedrock is the one.
 
-1. Sandbox sends `anthropic-messages` format to the broker with a sentinel. Unchanged — Pi does not
-   know or care what backend is behind the gateway.
-2. Broker validates, translates to the Bedrock InvokeModelWithResponseStream shape, and **signs with
-   SigV4 using its own ECS task role**.
-3. IAM policy on that role is the authorization boundary: which models, which regions, and
-   (via condition keys) under what constraints.
+| | Operated by | Model IDs | API parity | Wire translation in the broker |
+| --- | --- | --- | --- | --- |
+| **Claude Platform on AWS** | Anthropic | bare (`claude-sonnet-5`) | same-day with first-party | **none** |
+| **Amazon Bedrock** (Mantle client) | AWS | `anthropic.`-prefixed | partner schedule, feature subset | none — Mantle is a Messages-API endpoint |
+| **Bedrock Converse** | AWS | `anthropic.`-prefixed | — | `anthropic-messages` → Converse |
+
+**Claude Platform on AWS is the simplest path to the property this section wants.** It is
+Anthropic-operated with SigV4 auth, AWS IAM access control and Marketplace billing — so the
+credential-free goal is met — while the API surface matches first-party with same-day parity and
+model IDs carry no prefix. The broker's proxying logic is untouched: only *where* the request goes
+and *how* it is signed change. It is not Bedrock, and the two coexist.
+
+**Bedrock earns its place for the open-weight catalog**, not for Claude models. Its Mantle client is
+a Messages-API endpoint, so even there no Converse translation is needed for Claude. Converse only
+becomes worth the translation when one uniform tool-call shape across the *whole* open-weight
+catalog is the goal (below).
+
+In every case:
+
+1. Sandbox sends `anthropic-messages` to the broker with a sentinel. Unchanged — Pi does not know or
+   care what backend is behind the gateway.
+2. Broker validates the sentinel and **signs with SigV4 using its own ECS task role**.
+3. IAM policy on that role is the authorization boundary: which models, which regions, and (via
+   condition keys) under what constraints.
 
 No model API key exists in the system at all. Rotation becomes an IAM concern. Per-run attribution
-lands in CloudTrail for free. **This is the recommended default**; direct-key support exists for
-models Bedrock doesn't carry, and it is the same code path with a different credential resolver.
+lands in CloudTrail for free.
 
-### 3.5 Budget enforcement
+**Feature parity checked, not assumed.** Prompt caching (5m and 1h), automatic caching, adaptive
+thinking and effort, structured outputs and token counting are all available on Claude Platform on
+AWS *and* Bedrock — so the cost model in [poc-v2.md](poc-v2.md) §8, which leans heavily on cache
+reads, survives the move. Two caveats: the legacy Bedrock integration (Opus 4.6 and earlier) rejects
+top-level `cache_control` and needs explicit breakpoints, and cache diagnostics are first-party only.
+Partner pricing on Bedrock differs from the first-party rates the cost estimates use.
+
+#### Open-weight models#### Open-weight models
+
+Choosing Bedrock does not narrow the model lineup. As of early 2026 the serverless catalog carries
+roughly two dozen managed open-weight models — Llama, Mistral (Ministral, Large 3, Magistral),
+DeepSeek V3.2, the Qwen3 family including Qwen3 Coder, OpenAI's gpt-oss, Gemma, Nemotron, and
+others — alongside the frontier models. Beyond that, Bedrock Marketplace deploys models to managed
+endpoints, and **Custom Model Import** runs your own weights serverlessly for supported
+architectures (Llama, Mistral, Qwen, gpt-oss), currently in `us-east-1`, `us-west-2`, and
+`eu-central-1`.
+
+All of it is reached through the same SigV4-signed Converse call, which means the credential-free
+property holds for open-weight models exactly as it does for frontier ones.
+
+The practical caveat is capability, not availability: **open-weight models vary widely in tool-calling
+reliability**, and an agent loop that mis-calls tools fails in expensive, hard-to-debug ways. This
+argues for a mixed fleet rather than a single model choice — a strong model for the orchestrator and
+architect roles, where a bad plan costs a whole fan-out, and cheaper open-weight models for narrow,
+well-specified worker roles. `orc.config.ts` already sets `model` per role, so this is a policy
+decision per role and not an architectural one. Validate any open-weight model against the real tool schemas
+before trusting it in a worker role; the recorded-session test harness (plugin-api.md §7) is the
+cheap way to do that.
+
+### 3.5 A second upstream: the decision layer
+
+`api.typesafe.ai` sits behind the same gateway on the same terms — sentinel inbound, real credential
+substituted on egress, never returned inward ([decision-layer.md](decision-layer.md) §6). It is not
+a Pi provider and no agent can address it directly; decision requests originating inside a sandbox
+(the `tool_call` gate) travel the runner's unix socket outward like every other call. Its spend
+counts toward the run budget, and every decision is audited with its confidence and source.
+
+### 3.6 The model catalog must come from the broker
+
+Pi's model layer normalizes *protocol*, not *capability*. Differences it cannot normalize are
+declared as data on each `Model` descriptor — `contextWindow`, `maxTokens`, `cost`, `reasoning`,
+`input`, `thinkingLevelMap`, and a `compat` flag set for provider quirks. Pi uses those values
+locally: `contextWindow` drives when compaction fires, `cost` drives the spend display, `input`
+gates whether images are sent.
+
+**Those descriptors live in the sandbox.** If the broker fronts several models behind one provider
+entry and `@orc/pi` hardcodes the list, the sandbox's beliefs drift from what the broker actually
+permits — an agent compacts at the wrong threshold, or reports a cost computed from stale rates, or
+requests a model its role is not allowed to use and only discovers this at the gateway.
+
+So the broker owns the catalog and serves it:
+
+- The broker exposes `GET /m/catalog`, returning the models this run's role may use, with the
+  descriptor fields resolved from run policy.
+- `@orc/pi` populates them through Pi's own hook — `registerProvider` accepts an async
+  `refreshModels({ signal })`, which exists precisely for dynamic discovery.
+- The role's model allowlist is then enforced in one place instead of being duplicated in the
+  sandbox and re-checked at the gateway.
+
+The sentinel authenticates the catalog request, so the catalog is per-run and per-role without any
+extra credential.
+
+### 3.7 Inbound wire format is a per-role choice
+
+The broker's inbound format is independent of its upstream. Translating to Bedrock Converse happens
+regardless, so what Pi speaks *to* the broker is a free choice — and not a purely cosmetic one.
+
+Pi registers API implementations by wire protocol (`anthropic-messages`, `openai-completions`,
+`openai-responses`, `mistral-conversations`), not by provider, which is why many providers share one
+implementation. But the two formats do not expose the same control surface:
+
+- `samplingParams` — a free-form object merged verbatim into the request body — applies **only to
+  OpenAI-compatible APIs**. Knobs like vLLM's `top_k` or llama.cpp's `min_p` are unreachable through
+  `anthropic-messages`.
+- The richest `compat` flags (`supportsDeveloperRole`, `maxTokensField`, `requiresToolResultName`,
+  `thinkingFormat`, `supportsReasoningEffort`) are likewise OpenAI-side.
+
+So: `anthropic-messages` inbound for frontier-model roles, and `openai-completions` inbound for
+open-weight worker roles that need sampling control. Both terminate at the same broker and the same
+Converse call upstream. Pi selects per provider registration, so this is one field in role policy,
+not a fork in the broker.
+
+This is a **v1 concern, not a POC one** — see [poc.md](poc.md), which pins a single inbound format
+and keeps the choice behind one interface until there is a second role that needs it.
+
+### 3.8 Budget enforcement
 
 The broker sees every token in both directions, which makes it the only correct place to enforce
 spend. Per-run counters in DynamoDB, updated per response. When a run crosses `limits.usd_budget`,
@@ -158,7 +261,8 @@ verification. Better to make it an explicit, logged policy decision per host.
 
 ### 4.2 Policy evaluation
 
-Per request, against the run's resolved policy bundle (from `orc.yaml` + role + run overrides):
+Per request, against the run's resolved policy bundle (the frozen `orc.config.ts` snapshot + role +
+any runtime narrowing):
 
 ```
 allow if  host matches role.egress.allow          (exact or single-label wildcard)
