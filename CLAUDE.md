@@ -205,6 +205,14 @@ Check the repository's state first, every time, and rebase if it has moved:
 
 ## Code conventions
 
+**pnpm, never npm or npx.** `pnpm install`, `pnpm <script>`, `pnpm exec <bin>`, `pnpm dlx` for a
+one-off. This is not a style preference: [environments.md](docs/environments.md) §6 makes pnpm's own
+defaults load-bearing — dependency lifecycle scripts do not run on install, and `minimumReleaseAge`
+holds back versions published in the last day — and the POC's single allowed workspace mutation is
+*a package installed with pnpm*. An `npm install` writes a `package-lock.json` nobody reads and
+installs with lifecycle scripts enabled, which quietly voids the guarantee the sandbox design rests
+on. `npx` is the same hazard in one line.
+
 **Documentation lives in `docs/`. Comments are not documentation.** Code comments are limited to
 exactly two kinds:
 

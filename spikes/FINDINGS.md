@@ -107,7 +107,7 @@ Written, not run. Requires a person at **two** terminals — see
 [phase-0.md](../docs/phases/phase-0.md) §3.4. This is the spike most likely to change a decision
 (D4's mechanism), and the observation cannot be scripted; the setup around it can, and now is.
 
-`npm run 04-attach` seeds one turn over RPC, writes an `attach.sh` into the throwaway workspace and
+`pnpm 04-attach` seeds one turn over RPC, writes an `attach.sh` into the throwaway workspace and
 prints the one command to run in the second terminal, then tails its own event stream while asking
 the four §3.4 questions. Two of them it answers itself: whether the RPC process's `get_state`
 grew a message, and how many session files exist afterwards with the original still parsing. The
