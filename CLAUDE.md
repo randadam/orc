@@ -3,7 +3,7 @@
 Read this first. It exists so a session with no prior context can pick up the design without
 re-deriving it or re-litigating settled questions.
 
-**Status: design complete, implementation not started.** Eleven documents, no code.
+**Status: design complete, implementation not started.** Twelve documents, no code.
 
 ---
 
@@ -136,7 +136,8 @@ these docs are struck through with the answer rather than deleted, which is the 
 - **Every doc ends with its own open items.** Keep that; it is how the triage above stays honest.
 - **Detailed phase plans live in `docs/phases/phase-N.md`.** phases.md is the order authority; a
   phase plan is the execution authority for its phase and opens by stating which §15 questions it
-  assumes answers to. Phase 0 is written; it depends on almost none of them.
+  assumes answers to. Phases 0 and 1 are written. Phase 1 also states the phase 0 findings it
+  assumes, since phase 0 has not run; replace that table with `spikes/FINDINGS.md` before building.
 - **Cross-references use a relative markdown link plus a section number.** Section numbers have been renumbered a few times,
   so verify a reference resolves before trusting it.
 - Prose over bullets where reasoning matters. The reasoning is the valuable part — several of these

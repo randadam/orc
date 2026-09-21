@@ -196,10 +196,13 @@ that means nothing.
 Use the real OTEL SDK from the start — the instrumentation points are the same either way, and
 retrofitting them is the expensive part. Keep the backend trivial:
 
-- OTLP export to a **local collector**, writing to files. No hosted backend, no dashboards.
+- ~~OTLP export to a **local collector**, writing to files.~~ **Decided in phase 1
+  ([phases/phase-1.md](phases/phase-1.md) §2.1): an in-process exporter writes `trace.jsonl` into
+  the run directory, so the run records and the telemetry are one place. OTLP to a collector is an
+  `--otlp` flag, off by default.** No hosted backend, no dashboards.
 - `orc compare` reads the run records and prints a table grouped by `orc.config.hash`: the three
   headline metrics plus whichever diagnostic columns are asked for.
-- Traces to a local Jaeger only when diagnosing a specific bad run.
+- Traces to a local Jaeger (via `--otlp`) only when diagnosing a specific bad run.
 
 S0 gets run/phase/step spans and `orc.run.*` — enough to see the skeleton work. The slice and merge
 metrics arrive with the scheduler at S3, since before that there is nothing to aggregate. The three

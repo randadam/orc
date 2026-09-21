@@ -114,6 +114,8 @@ attach; the rest change a package.
 
 ## 4. Phase 1 — the SDK, on bare subprocesses, with traces
 
+> Detailed plan: [phases/phase-1.md](phases/phase-1.md).
+
 **Goal.** Get the orchestration API right while changing it is cheap. Agents are local `pi`
 subprocesses with a real key in the environment. No broker, no container, no isolation.
 
@@ -170,16 +172,16 @@ events and are labelled provisional; the broker replaces them in phase 2.
   Agents hold `write` and `bash` on a real machine here; the target is disposable by construction.
 - **One model, Sonnet.** The Haiku split arrives with real implementation in phase 6.
 
-**Left open — where telemetry lands.**
+~~**Left open — where telemetry lands.**~~ **Settled 2026-09-21 in
+[phases/phase-1.md](phases/phase-1.md) §2.1: an in-process exporter writes `trace.jsonl` into the
+run directory; OTLP to a collector is an `--otlp` flag, off by default.** Decided by Q6 (no Docker,
+and a collector is a container) and by the run directory already being the one place every later
+reader looks. The options, for the record:
 
 | Option | For | Against |
 | --- | --- | --- |
-| **In-process exporter writing JSONL into the run directory** (recommended) | Nothing to run; `orc show` and `orc compare` read one place; records outlive the run by construction | Not a standard backend; viewing a trace needs a converter or a small viewer |
+| **In-process exporter writing JSONL into the run directory** (chosen) | Nothing to run; `orc show` and `orc compare` read one place; records outlive the run by construction | Not a standard backend; viewing a trace needs a converter or a small viewer |
 | OTLP to a local collector writing files | Standard; Jaeger for free | A collector to run on every dev loop; run records and telemetry live in two places |
-
-The recommendation keeps the collector as a flag rather than a requirement. [observability.md](observability.md)
-§6 names the collector; treat that as a permitted backend, not the default, and record which was
-chosen there.
 
 **Spikes.** None beyond phase 0. If phase 0 found the RPC stream does not carry usage, phase 1
 records turns and durations only and cost waits for the broker.
@@ -633,7 +635,7 @@ Each is settled in the named phase's detailed plan, not here.
 | Decision | Phase | Options (recommended first) | What decides it |
 | --- | --- | --- | --- |
 | Structured-output mechanism for `ask()` | 0 | Submit tool · parse final message · provider structured outputs | The phase 0 spike |
-| Where telemetry lands | 1 | In-process JSONL in the run dir · OTLP to a local collector | Whether running a collector on every dev loop is acceptable |
+| ~~Where telemetry lands~~ | 1 | **Settled: in-process JSONL in the run dir; OTLP as a flag** ([phases/phase-1.md](phases/phase-1.md) §2.1) | Q6: no Docker, so no collector on the dev loop |
 | Control channel to an in-container runner | 2 | Attached stdio · runner connects out · runner listens | The reattach spike |
 | ~~Target repository (§15, Q1)~~ | — | **Settled 2026-09-21: `randadam/tudu`, a hand-seeded to-do app fixture** ([fixture.md](fixture.md)) | The author |
 | Where the prototype ends (§15, Q2) | — | Phase 8 · phase 6 · phase 7 | The author |
