@@ -47,8 +47,20 @@ orc run ship-feature # run it on AWS
 | [docs/decision-layer.md](docs/decision-layer.md) | Fast typed decisions (Jev) behind an LLM-backed interface |
 | [docs/fixture.md](docs/fixture.md) | The `tudu` seed: what the target repo must contain per phase |
 
-Status: **design phase.** Nothing is implemented yet.
+## Working on it
+
+```bash
+pnpm install          # pnpm only, never npm or npx — see CLAUDE.md
+pnpm check            # build, typecheck, lint, test: what CI runs on every pull request
+pnpm test             # vitest; no model key and no seed repo required
+```
+
+The workspace is `packages/sdk`, `packages/runner`, `packages/pi` and `packages/cli`.
+`spikes/` sits outside it, frozen at phase 0 and imported by nothing.
+
+Status: **design complete; phase 0 spikes run and closed out; phase 1 is under way.** Slice 1.0 —
+the workspace scaffold and the CI gate — has landed; the packages are skeletons.
 
 **New here (or starting a fresh session)? Read [CLAUDE.md](CLAUDE.md) first** — reading order, the
-eight decisions and what they rest on, what was rejected and why, and the single open question that
-blocks starting.
+nine decisions and what they rest on, what was rejected and why, and the triage of what is still
+open (nothing of which blocks starting).

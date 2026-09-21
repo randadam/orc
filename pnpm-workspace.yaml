@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+
+# environments.md §6: hold back anything published in the last day.
+minimumReleaseAge: 1440
+# phase-1.md §1.4: every pin is exact. No ^, no latest, on anything.
+savePrefix: ""
+engineStrict: true

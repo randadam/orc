@@ -1,0 +1,29 @@
+{
+  "name": "@orc/pi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Pi extension orc loads into every agent: the tool gate and structured output.",
+  "license": "UNLICENSED",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  }
+}

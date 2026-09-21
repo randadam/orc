@@ -1,0 +1,25 @@
+{
+  "name": "@orc/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The orc binary: run, resume, runs, show, trace, answer.",
+  "license": "UNLICENSED",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@orc/runner": "workspace:*",
+    "@orc/sdk": "workspace:*"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@orc/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The workflow-facing API: defineConfig, defineWorkflow, agents, steps, verify.",
+  "license": "UNLICENSED",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@orc/runner": "workspace:*"
+  }
+}

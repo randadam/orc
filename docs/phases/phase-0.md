@@ -338,14 +338,18 @@ roughly fifteen Haiku turns.
 
 ## 6. Open items
 
-1. **Q5 must be answered before the findings are trusted.** Spikes against 0.86.1 say nothing about
+1. **The findings are pinned to 0.86.1, and stay trustworthy only while the pin does.** Q5 is
+   answered (pin the latest stable, re-pin deliberately); spikes against 0.86.1 say nothing about
    another version. If the pin changes, re-run. **0.87.0 published 2026-09-21**; the pin stays
    0.86.1 under the decided policy, and moving it is a deliberate act that re-runs everything here.
 2. ~~`defaultProjectTrust` values are not confirmed here.~~ **Closed:** `"ask"` | `"always"` |
    `"never"`, global settings only; and non-interactive modes never show the prompt (Pi settings
    and usage docs, 2026-09-18). Spike 6 is updated accordingly.
-3. **The attach spike may reshape D4.** That is expected and cheap now; it would not be cheap after
-   phase 1 builds `orc attach` on the wrong model.
+3. ~~**The attach spike may reshape D4.**~~ **Closed 2026-09-21: it did.** 04-attach came back
+   `forked` — one session file, two writers, no live channel — so `orc attach` is a client of the
+   runner rather than a second Pi process. D4's mechanism paragraph in [plan.md](../plan.md) §8 is
+   rewritten and §3 of [phases.md](../phases.md) records the finding. This is exactly the reshape
+   the spike was for, and it landed before phase 1 built anything on the wrong model.
 4. ~~**Whether `--session` is honoured under `--mode rpc`.**~~ **Closed 2026-09-21: it is.** Spike 2
    tried the flag first and it worked; `switch_session` was never reached. Phase 1's resume is a
    flag.
@@ -363,7 +367,7 @@ roughly fifteen Haiku turns.
 7. **Nothing in this phase is kept as code, and that still holds.** `lib/rpc.ts` was written to be
    thrown away and phase 1 rewrites it with tests. The temptation to keep it will be strongest now
    that it works.
-6. **`agent_end` is not the end of a turn.** It is one low-level run and may be followed by a retry,
+8. **`agent_end` is not the end of a turn.** It is one low-level run and may be followed by a retry,
    a compaction or a queued continuation; `agent_settled` is the event that says nothing more
    follows automatically. The pass conditions above are written against `agent_end`, which is fine
    for a spike that prompts once. Phase 1's runner should wait on `agent_settled`.

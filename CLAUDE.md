@@ -14,7 +14,8 @@ and its "What phase 1 should carry forward" section is the part to read before b
 **`randadam/tudu` is seeded** at `bf25ac6`: an ordinary React SPA, **carrying no plans by design**
 (D9) — what it should become is produced through orc, not written by hand. Phase 1 pins that commit
 and binds to `pnpm test`: 46 tests, ~4s, no services. **The next work item is phase 1 slice 1.0**,
-the pnpm workspace scaffold, which needs no seed.
+the pnpm workspace scaffold, which needs no seed — and which also carries CI, because it is the
+first slice with a test to gate ([docs/phases/phase-1.md](docs/phases/phase-1.md) §2.12).
 
 ---
 
@@ -82,12 +83,15 @@ These decided several arguments each, and are the ones to reason from when somet
 
 ---
 
-## The one thing blocking a start
+## What is still open at the start
 
-**Nothing waits on a decision, and nothing waits on the seed.** Phase 0 is complete and
-**`randadam/tudu` is seeded** at `bf25ac6` per [docs/fixture.md](docs/fixture.md). Of the ten §15
-questions only Q2 (phase 6 or phase 8 as the stop) is open, and it sizes phases 7–8 rather than
-blocking them.
+**Nothing waits on a decision, and nothing waits on the seed.** Phase 0 is complete and closed out
+— every [docs/phases/phase-0.md](docs/phases/phase-0.md) §5 exit criterion met, every open item in
+its §6 either closed or a standing caution — and **`randadam/tudu` is seeded** at `bf25ac6` per
+[docs/fixture.md](docs/fixture.md). Four of the ten §15 questions are open (Q2, Q4, Q6, Q7) and
+**none of them blocks phase 1**: Q2 sizes phases 7–8, Q4 reorders phases 5–6, and Q6 and Q7 are
+assumed in [docs/phases/phase-1.md](docs/phases/phase-1.md) §1.1 in a form the plan survives either
+answer of — no Docker and a direct API key, where a different provider is a flag.
 
 **Two later phases assume repository features `tudu` does not have** — a `.devcontainer/` for
 phase 2's image build, a compose sidecar for phase 7's criterion 4
@@ -130,8 +134,10 @@ Roughly 30 across the docs, each listed at the end of its own document. They are
 
 - **Blocking:** nothing awaits a decision, and phase 1 is unblocked. Phases 2 and 7 assume
   repository features `tudu` does not have ([docs/fixture.md](docs/fixture.md) §4); under D9 those
-  are planned through orc when reached, not settled in advance. phases.md §15 holds the ten questions put to the author;
-  nine are struck through, Q2 is pending and non-blocking.
+  are planned through orc when reached, not settled in advance. phases.md §15 holds the ten
+  questions put to the author; six are struck through and four (Q2, Q4, Q6, Q7) are pending, none
+  of them blocking phase 1 — Q6 and Q7 are the ones to confirm before phase 2, which is where
+  Docker and the broker's credential both become real.
 - **Empirical** — need a real run, not a decision. Slice granularity, conflict rate, whether Haiku
   can carry implementation, whether the PRD loop converges on quality or merely agreement.
   [docs/observability.md](docs/observability.md) is the instrument built to answer them, and names
@@ -153,8 +159,8 @@ these docs are struck through with the answer rather than deleted, which is the 
 - **Every doc ends with its own open items.** Keep that; it is how the triage above stays honest.
 - **Detailed phase plans live in `docs/phases/phase-N.md`.** phases.md is the order authority; a
   phase plan is the execution authority for its phase and opens by stating which §15 questions it
-  assumes answers to. Phases 0 and 1 are written. Phase 1 also states the phase 0 findings it
-  assumes, since phase 0 has not run; replace that table with `spikes/FINDINGS.md` before building.
+  assumes answers to. Phases 0 and 1 are written. Phase 1 §1.2 now quotes `spikes/FINDINGS.md`
+  rather than assuming it, and three of those findings re-cut the plan — read it, not the spikes.
 - **Cross-references use a relative markdown link plus a section number.** Section numbers have been renumbered a few times,
   so verify a reference resolves before trusting it.
 - Prose over bullets where reasoning matters. The reasoning is the valuable part — several of these
@@ -193,6 +199,11 @@ This binds agent sessions as much as hand edits. An agent that pushes straight t
 the review step the whole design exists to produce, and it is the one shortcut that cannot be
 audited after the fact: there is no diff to read because there was no proposal. Cut the branch,
 push the branch, open the PR, and say what it contains.
+
+**From phase 1 slice 1.0 there is also a machine gate**: `.github/workflows/ci.yml` runs
+`pnpm check` on every pull request ([docs/phases/phase-1.md](docs/phases/phase-1.md) §2.12). A red
+check is fixed, not merged around — "it passes locally" is the self-report this design refuses
+everywhere else. CI holds no model key and runs nothing that spends.
 
 ### Before starting a slice
 
