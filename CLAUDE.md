@@ -6,9 +6,10 @@ re-deriving it or re-litigating settled questions.
 **Status: design complete; phase 0 all but finished.** Twelve documents, plus `spikes/` — every
 spike has run. **The kill criterion is answered: 01-veto passed, so the tool-policy model stands and
 phase 1 may proceed.** 04-attach came back `forked`, which revised D4's *mechanism* (not its intent)
-— `orc attach` is a client of the runner, not a second Pi process. 02-drive and 03-submit failed on
-bugs in the spike scripts rather than on Pi; both are fixed and **await a re-run**, which is all that
-is left of phase 0. `spikes/FINDINGS.md` is the record; see
+— `orc attach` is a client of the runner, not a second Pi process. 03-submit passed on its re-run, 5/5 with
+`terminate` working. 02-drive answered everything §3.2 asks — abort lands in 0.0s, `--session` is
+honoured under `--mode rpc`, context survives — but one check measured the wrong thing and its
+replacement has not run. **A green `./run-all.sh` is all that is left of phase 0.** `spikes/FINDINGS.md` is the record; see
 [docs/phases/phase-0.md](docs/phases/phase-0.md) §5.
 
 ---
