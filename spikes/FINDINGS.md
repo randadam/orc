@@ -16,19 +16,21 @@ anywhere: `lib/rpc.ts` is the only place a key is handed to a process, which is 
 | --- | --- |
 | 00-harness | pass |
 | 01-veto | **pass** — the kill criterion is answered |
-| 02-drive | inconclusive — the script never reached the abort; fixed, needs a re-run |
-| 03-submit | half answered — 5/5 structured output; the `terminate` check was wrong, needs a re-run |
+| 02-drive | answered — one check still measured on a wrong proxy; fixed, needs a third run |
+| 03-submit | **pass** |
 | 04-attach | **forked** — observed 2026-09-21; D4's mechanism changes |
 | 05-events | pass |
 | 06-trust | pass |
+
+**Two of the six took more than one run**, both because the spike was wrong rather than Pi. That is
+what the spikes are for, and the mistakes are written up rather than quietly fixed — each one is a
+trap phase 1's runner would otherwise walk into.
 
 **The kill criterion is evaluated: spike 1 passed, proceed to phase 1.**
 [phase-0.md](../docs/phases/phase-0.md) §5 exit criterion 4 asks for this in writing, so: a
 `tool_call` handler returning `{ block: true }` stopped `bash` from executing, the file it would
 have created does not exist, and the reason reached the model. The tool-policy model in
-[plan.md](../docs/plan.md) §4 stands as designed. Nothing below changes that; 02-drive and
-03-submit are §5's "the SDK surface changes but the design survives" tier, and neither has actually
-failed yet.
+[plan.md](../docs/plan.md) §4 stands as designed.
 
 **A spike that could not reach its question says so.** An unusable key looks exactly like a model
 that declined to call a tool, and the difference matters most on 01-veto, where "the bash call never
@@ -88,31 +90,38 @@ need to.
 
 ## 02-drive
 
-**Inconclusive — a bug in the script, not a finding about Pi.** The 2026-09-21 run reported
-`DRIVE: fail — abort→agent_end in -0.0s` and it says nothing about abort, because the abort was
-never sent into a running turn.
+Second run, 2026-09-21: `DRIVE: fail — abort→agent_end in 0.0s; resume via startup flag; context
+survives: yes`. **Everything §3.2 actually asks was observed. The one remaining `fail` is a wrong
+proxy in the check, not a failure**, and a third run is outstanding to retire it.
 
-The script waited up to 60s for a **second** `tool_execution_start`, as §3.2 step 2 specifies.
-Haiku did not make ten separate `bash` calls, so the second start never came, the wait ran its full
-60 seconds, and the turn finished during it. The `abort` that followed landed on an idle session,
-which correctly produced no new `agent_end`, and the spike timed out waiting for one.
+What the run establishes:
 
-Two fixes, both in `02-drive/run.ts`:
+- **Abort works, and it is immediate.** `agent_end` arrived **0.0s** after the abort. All ten
+  `bash` calls came back `Command aborted` and, by the model's own account on resume, *"0 sleeps
+  completed"* — the abort caught every one of them in flight.
+- **`--session <path>` IS honoured under `--mode rpc`.** The startup flag worked on the first try, so
+  `switch_session` was never needed. This is the open question §3.2 step 4 existed to settle
+  ([phase-0.md](../docs/phases/phase-0.md) §6 item 4), and it means phase 1's resume is a flag.
+- **Context survives the resume.** `messageCount` 14, and the follow-up turn answered about the
+  interrupted work rather than starting fresh.
 
-1. **The wait now ends the moment `agent_end` appears**, and a turn that finished before it could be
-   aborted is reported as exactly that — `the turn finished after N tool call(s) before it could be
-   aborted` — rather than as a timeout thirty seconds later on an unrelated await.
-2. **The prompt asks for ten separate tool calls explicitly**, since the original wording let the
-   model satisfy it with one command.
+**Pi runs sibling tool calls concurrently by default.** Haiku emitted all ten `bash` calls in one
+assistant message and all ten `tool_execution_start`s fired together. That is what broke the check:
+it asserted `tool_execution_start < 10` as a stand-in for §3.2's *"it did not run all ten sleeps —
+check wall clock"*, and under parallel execution a start count measures nothing about work done. The
+check now counts **tool executions that ended aborted**, which is the effect itself rather than a
+proxy for it. Phase 1 should take the parallelism as a finding in its own right: a per-tool
+`executionMode: "sequential"` exists, and `tool_call` preflights siblings sequentially before they
+execute concurrently.
 
-Worth keeping for the runner: **an `abort` on an idle session is silent.** It answers, and emits
-nothing. A runner that sends `abort` and then waits for `agent_end` to confirm it will hang whenever
-the turn happened to finish first. Wait on the response, and treat an already-settled session as
-already aborted.
-
-`run.ts` otherwise follows §3.2 step by step and tries the startup flag before `switch_session`, so
-the finding will say which mechanism actually works under `--mode rpc` rather than assuming. It
-prints the follow-up answer for the by-eye check §3.2 pass condition 4 asks for. **Needs a re-run.**
+The first run never reached the abort at all: it waited 60s for a *second*
+`tool_execution_start` — which, in that run, the model never produced as a separate message — and
+the turn finished during the wait, so the `abort` landed on an idle session. Two things came out of
+that. The wait is now event-driven and a turn that ends before it can be aborted is reported as
+exactly that. And, for the runner: **an `abort` on a settled session emits nothing.** It answers,
+and stays silent. A runner that sends `abort` then waits for `agent_end` to confirm will hang
+whenever the turn happened to finish first — wait on the response, and treat an already-settled
+session as already aborted.
 
 For whoever runs it: the session directory resolves `--session-dir` → `PI_CODING_AGENT_SESSION_DIR`
 → `sessionDir` in settings, so the runner can use the environment variable rather than a flag.
@@ -128,29 +137,25 @@ should do the same.
 
 ## 03-submit
 
-**Half answered.** From the 2026-09-21 run:
-
 ```
-SUBMIT: fail — 5/5 valid; terminate skips follow-up: no; median 6.2s
+SUBMIT: pass — 5/5 valid; terminate skips follow-up: yes; median 5.3s
 script: spikes/03-submit/run.ts   pi: 0.86.1   model: claude-haiku-4-5   date: 2026-09-21
 ```
 
-**The structured-output half passed outright: 5/5.** Five fresh processes, five single
-`submit_result` calls, five argument sets valid against the schema `ext.ts` registered. Median 6.2s;
-one outlier at 56.4s and the rest between 4.8s and 13.6s. §3.3's acceptance — *one structured-output
-mechanism works reliably enough to build `ask()` on* — is met by the tool, and the JSON fallback was
-not needed.
+Five fresh processes, five single `submit_result` calls, five argument sets valid against the schema
+`ext.ts` registered, and no follow-up assistant message in any of them. 4.7s–10.5s, median 5.3s. The
+JSON fallback was never needed. **`ask()` can be built on a terminating tool**, and it costs one
+turn rather than two.
 
-**The `terminate` half is not answered, because the check was wrong.** It looked for any
-`message_start` between the `submit_result` tool result and `agent_end`. 05-events then showed that
-**Pi emits `message_start`/`message_end` for the `toolResult` message too** — six `message_start`
-events for system, user, assistant, two tool results and the final assistant message. So the tool
-result's own `message_start` was counted as the follow-up it was meant to detect, and the check
-could never have passed. It now requires `message.role === "assistant"`. **Needs a re-run**, and
-`terminate` may well have been working all along.
+It took two runs. The first reported `terminate skips follow-up: no`, which was wrong: the check
+looked for any `message_start` between the `submit_result` tool result and `agent_end`, and
+05-events showed that **Pi emits `message_start`/`message_end` for the `toolResult` message too**.
+The tool result's own `message_start` was being counted as the follow-up it was meant to detect, so
+the check could never have passed. It now requires `message.role === "assistant"`.
 
-That mistake is worth remembering as a class: **an event name is not a message type.** Phase 1's
-telemetry will make the same error if it counts `message_start` without reading the role.
+Worth remembering as a class, because phase 1's telemetry can make exactly the same mistake:
+**an event name is not a message type.** Count assistant turns by reading `message.role`, never by
+counting `message_start`.
 
 `typebox` is pinned to `1.3.27` here to match Pi's own dependency exactly, so a schema built in a
 spike is the same schema Pi validates against, and `run.ts` validates against the very object
@@ -289,13 +294,18 @@ one workspace the runner is starting.
    conditions are written against the real one. Worth reconsidering only if a key stays unavailable.
    `registerProvider` is confirmed present in 0.86.1, so the option is real if it comes to that.
 5. ~~**The spikes were written in an environment with no key**, so a first real run may well turn up
-   a shape the scripts do not expect. That is the spike working, not failing; fix the script and
-   re-run.~~ **It did, twice**, on the first real run: 03-submit counted a `message_start` that
-   belongs to a tool result, and 02-drive waited out a timeout for a second tool call the model
-   never made. Both scripts are fixed. **Two re-runs are outstanding — 02-drive and 03-submit —
-   and phase 0 is not finished until they come back.**
-6. **`--session` under `--mode rpc` is still unanswered.** 02-drive is the only spike that probes it
-   and it never got that far. Phase 1's resume path depends on the answer, so it is not optional.
-7. **An `abort` on an already-settled session emits nothing.** Recorded under 02-drive. It is a
-   finding about Pi that fell out of the bug rather than out of the spike, and phase 1's runner
-   needs it whether or not 02-drive is re-run.
+   a shape the scripts do not expect.~~ **It did, three times**, and every one was the spike being
+   wrong rather than Pi: 03-submit counted a `message_start` belonging to a tool result; 02-drive
+   first waited out a timeout for a second tool call the model never made, then measured the abort
+   by counting tool *starts*, which parallel tool execution makes meaningless. All three are fixed
+   and the reasoning is kept above rather than deleted.
+6. ~~**`--session` under `--mode rpc` is unanswered.**~~ **Closed: it is honoured.** 02-drive
+   resumed via the startup flag on the first attempt and never needed `switch_session`. Phase 1's
+   resume is a flag.
+7. **One re-run is outstanding: 02-drive.** Everything §3.2 asks has been observed, but the abort
+   check was measuring the wrong thing and its replacement has not itself been run. **Exit
+   criterion 1 is not met until `./run-all.sh` comes back green end to end.**
+8. **Pi runs sibling tool calls concurrently by default.** Recorded under 02-drive. It falls out of
+   the bug rather than out of any spike's question, and it bears on the tool gate: `tool_call`
+   preflights siblings sequentially, then they execute in parallel, so a gate that assumes one
+   in-flight tool at a time is wrong.

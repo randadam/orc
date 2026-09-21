@@ -43,6 +43,15 @@ function assistantEntries(path: string): number {
   return count;
 }
 
+/** Tool executions that ended aborted rather than completing — the abort's demonstrable effect. */
+function aborted(): number {
+  return pi.ofType("tool_execution_end").filter((r) => {
+    const result = r.result as { content?: Array<{ text?: string }> } | undefined;
+    const text = (result?.content ?? []).map((c) => c.text ?? "").join(" ");
+    return r.isError === true || /abort/i.test(text);
+  }).length;
+}
+
 /** Wait for the nth tool call, or for the turn to end first — which would leave nothing to abort. */
 async function abortable(n: number, timeoutMs: number): Promise<{ starts: number; ended: boolean }> {
   const deadline = Date.now() + timeoutMs;
@@ -95,7 +104,9 @@ try {
 
   const total = pi.ofType("tool_execution_start").length;
   checks.ok(`agent_end within 10s of abort (${(abortMs / 1000).toFixed(1)}s)`, abortMs <= 10_000);
-  checks.ok(`the abort cut the run short (${total} of 10 sleeps started)`, total < 10);
+  // Pi runs sibling tool calls concurrently, so a start count says nothing about work done.
+  const cut = aborted();
+  checks.ok(`the abort cut the tool calls short (${cut} of ${total} aborted)`, cut >= 1);
 
   const before = await state(pi);
   const sessionFile = before.sessionFile;
