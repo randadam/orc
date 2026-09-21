@@ -268,6 +268,10 @@ packages/
     src/gate.ts              decide(policy, toolName): pure, unit-tested without Pi
     src/models.ts            resolveModels(): returns a constant
   cli/                       @orc/cli — the `orc` binary
+    src/bin.ts                 the `orc` entry point; `main()` with the real stdout and env
+    src/main.ts                usage, dispatch, and the exit code for a usage error
+    src/cli.ts                 argv parsing, and where `--runs-dir` resolves from
+    src/format.ts              durations, columns and label/value pairs
     src/commands/{run,resume,runs,show,trace,answer}.ts
 examples/
   loop-and-escape/           workflow.ts, README.md
@@ -331,6 +335,7 @@ into the container and `agent.json`'s `workspace` field becomes the container pa
   "result": null,                // the workflow's return value on completion
   "error": null,                 // { name, message, stack } on failure
   "turns": 0,                    // run-level turn count, updated as agents finish turns
+  "pid": 12345,                  // the process holding the run; null once nothing holds it
   "pi": { "version": "0.86.1" },
   "orc": { "version": "0.1.0" }
 }
@@ -382,6 +387,7 @@ run.
   "id": "three-review-rounds-without-approval-1",
   "reason": "Three review rounds without approval",
   "context": { /* as given */ },
+  "truncated": false,            // true when `context` was cut to 64 KiB and is its JSON text
   "askedAt": "…",
   "answer": null | { "action": "abort" | "proceed" | "amend", "step": "review:3", "note": "", "answeredAt": "…" },
   "consumed": false
