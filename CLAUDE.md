@@ -3,7 +3,11 @@
 Read this first. It exists so a session with no prior context can pick up the design without
 re-deriving it or re-litigating settled questions.
 
-**Status: design complete, implementation not started.** Twelve documents, no code.
+**Status: design complete; phase 0 underway.** Twelve documents, plus `spikes/` — the phase 0
+harness and the two checks that need no API key (`00-harness`, `06-trust`) are written and passing;
+`spikes/FINDINGS.md` is the running record. The four model-backed spikes and the manual attach spike
+are not done, so **the kill criterion is still unevaluated** — see
+[docs/phases/phase-0.md](docs/phases/phase-0.md) §5.
 
 ---
 
