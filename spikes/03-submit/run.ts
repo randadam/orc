@@ -61,7 +61,12 @@ async function attempt(): Promise<Attempt> {
     const rest = pi.records.slice(calls[0]!.i + 1);
     const end = rest.findIndex((r) => r.type === "agent_end");
     const between = end === -1 ? rest : rest.slice(0, end);
-    const followUp = between.some((r) => r.type === "message_start");
+    // Pi emits message_start for the toolResult message too; only a new assistant message counts.
+    const followUp = between.some(
+      (r) =>
+        r.type === "message_start" &&
+        (r.message as { role?: string } | undefined)?.role === "assistant",
+    );
 
     return {
       valid,
@@ -138,6 +143,7 @@ try {
     console.log(`  fallback: ${await fallback()}/${RUNS} parsed and validated`);
   }
 } catch (err) {
+  console.log(`\n${(err as Error).message}\n`);
   checks.ok(`the spike ran to completion — ${(err as Error).message.split("\n")[0]}`, false);
 } finally {
   cleanupTmp();

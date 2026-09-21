@@ -342,12 +342,18 @@ roughly fifteen Haiku turns.
 4. **Whether `--session` is honoured under `--mode rpc`.** The flag exists for interactive mode;
    `switch_session` exists for RPC; the docs are silent on the overlap. Spike 2 now tries the flag
    first and records which works; phase 1 builds on whichever it is.
-5. ~~**Four spikes are written up but not written, for want of a key.**~~ **All six are written as
-   of 2026-09-21**, and every script has had its failure path exercised against a deliberately
-   invalid key. 00-harness and 06-trust pass; 01-veto, 02-drive, 03-submit and 05-events need a key;
-   04-attach needs a key and a person at two terminals. **The kill criterion (§5.4) is still
-   unevaluated** — writing the script did not evaluate it, only a run does, and nothing may be built
-   on the tool-policy model until 01-veto runs green.
+5. ~~**Four spikes are written up but not written, for want of a key.**~~ ~~**The kill criterion
+   (§5.4) is still unevaluated.**~~ **Closed 2026-09-21: all six ran. 01-veto passed, so the kill
+   criterion is answered and phase 1 may proceed** — the verdict is written at the top of
+   `spikes/FINDINGS.md`. 00-harness, 01-veto, 05-events and 06-trust pass; 04-attach came back
+   `forked`, which revised D4's mechanism in [plan.md](../plan.md) §8 and §3 of
+   [phases.md](../phases.md).
+6. **Two re-runs are outstanding: 02-drive and 03-submit.** Both failed on bugs in the spike
+   scripts, not on Pi — 03-submit counted the tool result's own `message_start` as a follow-up
+   assistant message, and 02-drive waited out a 60s timeout for a second tool call Haiku never made,
+   then aborted an already-idle session. Both are fixed; `spikes/FINDINGS.md` has the detail.
+   **Exit criterion 1 is not met until they come back green**, and `--session` under `--mode rpc`
+   (open item 4 above) is unanswered until 02-drive does.
 6. **`agent_end` is not the end of a turn.** It is one low-level run and may be followed by a retry,
    a compaction or a queued continuation; `agent_settled` is the event that says nothing more
    follows automatically. The pass conditions above are written against `agent_end`, which is fine

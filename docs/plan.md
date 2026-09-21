@@ -474,9 +474,22 @@ an artifact keyed to its step — so a resumed run does not re-ask. Options are 
 (risk recorded), or `amend` (edit the artifact and resume from that step). Every loop cap, failed
 slice, unresolvable conflict and cycle escalates rather than failing silently or guessing.
 
-For phases that need a human *in* the conversation, `orc attach <agent>` runs `pi --session <path>`
-against that agent's live session, giving the real Pi TUI. No bespoke chat UI. Pi's
-`extension_ui_request` over RPC is the path to routing prompts elsewhere later.
+For phases that need a human *in* the conversation, `orc attach <agent>` puts the person in that
+agent's live session. No bespoke chat UI.
+
+**Mechanism, revised 2026-09-21 by spike 04-attach** (`spikes/FINDINGS.md`). This said
+`pi --session <path>` — a second Pi process opening the same session file. It was measured, and the
+two processes do not share a live session: the TUI reads the history, but nothing typed into it
+reaches the RPC process, whose `get_state` does not move. Worse than a clean fork, there is **one
+file and two writers** — the TUI appends to the same JSONL, and the RPC process's next write would
+branch from a stale parent. The intent of D4 is unchanged; the mechanism is not.
+
+`orc attach` is therefore **a client of the runner**: a thin TUI that forwards `prompt` and `steer`
+through the runner to the one Pi process and renders the runner's event stream. Pi's
+`extension_ui_request` sub-protocol is the relay. This is what [console.md](console.md) §3 already
+assumed — "a second view onto the same session, driven through the runner's existing RPC bridge" —
+so the console and the CLI attach are the same thing with two front ends, which is cheaper than the
+two mechanisms this decision used to imply.
 
 ### D5 — Environments come from the repo's dev container (decided)
 

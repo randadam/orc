@@ -93,6 +93,7 @@ try {
   if (!attempted) console.log("  (the veto was never exercised — the model declined to call bash)");
   console.log(`  tool result seen by the model: ${JSON.stringify(bashResultText().slice(0, 200))}`);
 } catch (err) {
+  console.log(`\n${(err as Error).message}\n`);
   checks.ok(`the spike ran to completion — ${(err as Error).message.split("\n")[0]}`, false);
 } finally {
   await pi.close();

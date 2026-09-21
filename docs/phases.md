@@ -80,7 +80,9 @@ question with a yes or no you can reproduce.
   policy model rests on.
 - Extract structured output from a turn against a schema, by whichever mechanism the spike below settles.
 - Attach a Pi TUI (`pi --session <path>`) to a session another process is driving over RPC, and see
-  what happens to both.
+  what happens to both. **Answered 2026-09-21: they do not share a live session** — one file, two
+  writers, no live channel. `orc attach` becomes a client of the runner; see [plan.md](plan.md) §8
+  D4, revised, and `spikes/FINDINGS.md`.
 - Confirm what Pi's RPC event stream carries per turn: token usage, model, tool timings. Phase 1's
   telemetry is built on whatever this finds.
 - Confirm how `project_trust` behaves in RPC mode with no terminal to answer the prompt.
@@ -291,7 +293,8 @@ Write a workflow test with mocked agents.
   ([plugin-api.md](plugin-api.md) §7).
 - Fixture mode as a runner flag, so any workflow can run against recordings.
 - Concurrency cap on sandboxes, enforced.
-- `orc attach <agent>` for a live session, using whatever phase 0 found works.
+- `orc attach <agent>` for a live session, as a client of the runner — phase 0 found that a second
+  Pi process on the same session file does not share it ([plan.md](plan.md) §8 D4).
 
 **Observability increment.** `orc.step.cache` hit/miss, so resume can be seen saving what it should.
 `orc.run.outcome` and `orc.run.escalations` with reason and phase — the headline quality signal

@@ -43,6 +43,17 @@ function assistantEntries(path: string): number {
   return count;
 }
 
+/** Wait for the nth tool call, or for the turn to end first — which would leave nothing to abort. */
+async function abortable(n: number, timeoutMs: number): Promise<{ starts: number; ended: boolean }> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const starts = pi.ofType("tool_execution_start").length;
+    const ended = pi.ofType("agent_end").length > 0;
+    if (starts >= n || ended || Date.now() > deadline) return { starts, ended };
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
 const checks = new Checks();
 let abortMs = -1;
 let resumeVia = "neither";
@@ -54,7 +65,9 @@ try {
   await pi.call(
     {
       type: "prompt",
-      message: "Using bash, run `sleep 2` ten separate times, reporting after each.",
+      message:
+        "Using the bash tool, run `sleep 2` ten separate times — ten separate bash tool " +
+        "calls, one sleep each, reporting after each. Do not combine them into one command.",
     },
     30_000,
   );
@@ -64,8 +77,15 @@ try {
   checks.ok(`every model call succeeded${modelError ? ` — ${modelError}` : ""}`, modelError === undefined);
   if (modelError) throw new Error(modelError);
 
-  const started = await pi.awaitCount("tool_execution_start", 2, 60_000);
-  checks.ok("the agent got at least one tool call away before the abort", started >= 1);
+  const { starts, ended } = await abortable(2, 60_000);
+  checks.ok(`the agent got at least one tool call away (${starts} started)`, starts >= 1);
+  checks.ok("the turn was still running when the abort was sent", !ended);
+  if (ended) {
+    throw new Error(
+      `the turn finished after ${starts} tool call(s) before it could be aborted — ` +
+        "there was nothing to abort, so this run says nothing about abort",
+    );
+  }
 
   const from = pi.mark();
   const t0 = Date.now();
@@ -116,6 +136,7 @@ try {
   contextSurvives = checks.ok("the follow-up turn produced a non-empty answer", text.length > 0);
   console.log(`  answer (check by eye that it refers to the interrupted work):\n    ${text.trim()}`);
 } catch (err) {
+  console.log(`\n${(err as Error).message}\n`);
   checks.ok(`the spike ran to completion — ${(err as Error).message.split("\n")[0]}`, false);
 } finally {
   await pi.close();
