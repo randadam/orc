@@ -635,12 +635,17 @@ Each is settled in the named phase's detailed plan, not here.
 These are not answerable from the existing docs, and several change the plan above. Answers get
 recorded here, struck through with the decision, per the convention in CLAUDE.md.
 
-1. **Which repository is the prototype target?** **Answered 2026-09-21: `randadam/aib`.** Not yet
-   struck through, because the answer is unverified: this session cannot read the repo (the Claude
-   GitHub App's access does not include it), so its fit against the TypeScript + pnpm assumption
-   ([poc.md](poc.md) §3, [environments.md](environments.md) §6) is unchecked. If `aib` is not
-   TypeScript/pnpm, the guard list and the pre-baked image plan change before phase 1 — that check
-   is the first thing to do once access is granted. The original question, for the record:
+1. **Which repository is the prototype target?** **Answered 2026-09-21: `randadam/aib`** — and,
+   on inspection the same day, **the repository is empty**: zero refs, zero objects. So there is
+   nothing to check the TypeScript + pnpm assumption against, and nothing for the workflow to start
+   from — no devcontainer, no lockfile, no test suite, and no green baseline, which
+   [poc-v2.md](poc-v2.md) phase 0 (prevalidate) requires and phase 1's first real run needs. The
+   question therefore turns into **how `aib` gets its initial content**, which is the author's
+   call and is not struck through. The three shapes below still apply, with one addition: seeding
+   the empty repo by hand as a purpose-built fixture is the cheapest and matches the recommended
+   split. Having orc *bootstrap* it is possible but is a greenfield task, not feature delivery — no
+   baseline to prevalidate, no suite to keep green — and would need its own workflow shape.
+   The original question, for the record:
    Three shapes, with different costs:
    - *A purpose-built fixture repo*: small TypeScript service, fast pnpm test suite, a devcontainer
      you control, and seeded feature requests. Deterministic and cheap to benchmark; artificial, so it
@@ -680,10 +685,12 @@ recorded here, struck through with the decision, per the convention in CLAUDE.md
    severity runs beside phases 5–8 at no cost to the sequence; the Jev row leaves §12. Nothing in
    any phase's acceptance depends on it. Which access surface (direct API, OpenRouter, a gateway) is
    still unconfirmed — [decision-layer.md](decision-layer.md) §7.
-9. **Who implements each phase?** If detailed phase plans are going to be executed by agent sessions
-   rather than by you, each phase's plan should carry an executable acceptance suite, not prose
-   criteria — and phase 1's run-directory layout should be specified to the byte. That changes how
-   the detailed plans are written, not what they contain.
+9. ~~**Who implements each phase?**~~ **Answered 2026-09-21: the author does.** Executable
+   acceptance suites and a byte-level phase 1 run-directory layout are **adopted anyway**, on their
+   own merit rather than because of who executes: a phase gate that is *reported* met — by a person
+   or a model — is the self-report problem the design guards against at runtime, and an exit code
+   is not. Phase 0 already follows this ([phases/phase-0.md](phases/phase-0.md) §5); every later
+   phase plan does too.
 10. **Is one human the only user throughout?** The prototype assumes a single operator at a
     terminal: escalations are prompts, the PM phase is an attach, and nothing carries attribution.
     If a second person will use it before phase 8, escalation records need an identity field from
