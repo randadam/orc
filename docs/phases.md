@@ -202,6 +202,12 @@ running sandbox and fail to find a key. `orc show <run>` now reports cost, from 
   implementation and a credential-resolver function with one implementation
   ([poc.md](poc.md) §4). **Nothing outside the broker constructs a model client or sees a key**,
   including throwaway code.
+- **Dollar budget enforced in the broker, from this phase** (§15 Q3: a $50/month hard cap). Two
+  counters where the tokens are already counted — per run and per calendar month — both set in
+  `orc.config.ts`. Crossing either revokes the run's sentinels and lets in-flight requests drain;
+  the run halts and reports rather than degrading to a cheaper model
+  ([proxy-design.md](proxy-design.md) §3.8). The provider console's own spend limit is the outer
+  backstop, set to the same number.
 - `LocalDockerSandbox` via dockerode: one container per agent, no network but the broker, read-only
   root, writable `/workspace`.
 - The runner inside the container as PID 1, driving `pi` and executing `verify` commands.
@@ -229,6 +235,9 @@ path — if caching stopped working, the cost model in [poc-v2.md](poc-v2.md) §
 3. A `deny`-listed tool is blocked inside the sandbox, asserted by a test that runs in the container.
 4. Cache hit ratio through the broker matches direct calls for the same prompts, within noise.
 5. `orc show <run>` reports a cost that reconciles with the provider's usage figures.
+6. A run whose cap is set below its expected cost halts at the cap: its sentinels are dead
+   immediately after, the run record says `budget_exceeded`, and no request after the halt reaches
+   the upstream — asserted by a test, not observed.
 
 **Settled here.**
 
@@ -442,8 +451,9 @@ hash, and you can flip the implementation model in one line and run the sweep ag
 - **Package requests**, pnpm-only, exactly as [environments.md](environments.md) §6: a request
   resolved outside the sandbox, installed offline inside it, landing in the diff, with the lockfile
   reconciled at merge against approved requests. Escalates to a human for approval in the prototype.
-- Per-run budget as a turn cap still; dollar budget enforcement in the broker is one check where the
-  counter already increments and may land here if a run gets expensive.
+- Dollar budget has been enforced in the broker since phase 2 (§15 Q3); the turn cap remains as
+  the backstop against a loop that burns turns without spending much. The compare in this phase is
+  sized to the cap: two configurations × three runs × one item, widened only if the spread demands.
 
 **Observability increment.** `orc.slice.turns_to_green`, `orc.slice.verify_runs`,
 `orc.slice.feasibility_rounds`, `orc.package.requests`. **`orc compare`**: reads run records, groups
@@ -625,7 +635,7 @@ Each is settled in the named phase's detailed plan, not here.
 | Structured-output mechanism for `ask()` | 0 | Submit tool · parse final message · provider structured outputs | The phase 0 spike |
 | Where telemetry lands | 1 | In-process JSONL in the run dir · OTLP to a local collector | Whether running a collector on every dev loop is acceptable |
 | Control channel to an in-container runner | 2 | Attached stdio · runner connects out · runner listens | The reattach spike |
-| Target repository (§15, Q1) | 1 onward | Purpose-built fixture · an existing OSS TypeScript repo · orc itself | The author |
+| ~~Target repository (§15, Q1)~~ | — | **Settled 2026-09-21: `randadam/tudu`, a hand-seeded to-do app fixture** ([fixture.md](fixture.md)) | The author |
 | Where the prototype ends (§15, Q2) | — | Phase 8 · phase 6 · phase 7 | The author |
 | Benchmark set contents | 5 | Depends on the target repo | Chosen with the repo |
 | Which questions are promoted to Jev, and when | 5–8 | Severity first · then verify-failure and conflict triage if severity's agreement holds · none | The observed agreement rate and confidence distribution from the shadow track, not a phase boundary |
@@ -635,17 +645,13 @@ Each is settled in the named phase's detailed plan, not here.
 These are not answerable from the existing docs, and several change the plan above. Answers get
 recorded here, struck through with the decision, per the convention in CLAUDE.md.
 
-1. **Which repository is the prototype target?** **Answered 2026-09-21: `randadam/aib`** — and,
-   on inspection the same day, **the repository is empty**: zero refs, zero objects. So there is
-   nothing to check the TypeScript + pnpm assumption against, and nothing for the workflow to start
-   from — no devcontainer, no lockfile, no test suite, and no green baseline, which
-   [poc-v2.md](poc-v2.md) phase 0 (prevalidate) requires and phase 1's first real run needs. The
-   question therefore turns into **how `aib` gets its initial content**, which is the author's
-   call and is not struck through. The three shapes below still apply, with one addition: seeding
-   the empty repo by hand as a purpose-built fixture is the cheapest and matches the recommended
-   split. Having orc *bootstrap* it is possible but is a greenfield task, not feature delivery — no
-   baseline to prevalidate, no suite to keep green — and would need its own workflow shape.
-   The original question, for the record:
+1. ~~**Which repository is the prototype target?**~~ **Answered 2026-09-21: `randadam/tudu`**
+   (renamed from `aib` the same day), **seeded by hand as a purpose-built fixture: a to-do app.**
+   Simple enough to seed in a day, open-ended enough to keep adding features to. On inspection the
+   repository was empty (zero refs, zero objects), so seeding is the first piece of work rather
+   than a further decision; what the seed must contain to exercise every phase is
+   [fixture.md](fixture.md). TypeScript + pnpm, so the guard list and pre-baked image plan hold as
+   written. The original question, for the record:
    Three shapes, with different costs:
    - *A purpose-built fixture repo*: small TypeScript service, fast pnpm test suite, a devcontainer
      you control, and seeded feature requests. Deterministic and cheap to benchmark; artificial, so it
@@ -659,11 +665,20 @@ recorded here, struck through with the decision, per the convention in CLAUDE.md
    a candidate for the real one?
 2. **Where does the prototype end?** This document assumes phase 8. If the goal is "prove the design
    and answer the Haiku question," phase 6 is a defensible stop and phases 7–8 become the next
-   project. Which?
-3. **What is the real-model budget?** Per run and for the whole prototype. A benchmark sweep in
-   phase 6 is on the order of 45 runs at roughly $2–3 each if the estimate holds, and phase 8's is
-   larger. The answer sets the turn caps, how hard phase 3's recorded mode is leaned on, and whether
-   dollar-budget enforcement in the broker moves earlier.
+   project. Which? *(Explained to the author 2026-09-21; pending. The $50/month cap under Q3 bears
+   on it — see there.)*
+3. ~~**What is the real-model budget?**~~ **Answered 2026-09-21: $50 per month, hard cap, to
+   start.** Four consequences, all now in the plan:
+   - **Dollar-budget enforcement in the broker moves to phase 2.** A cap enforced by watching a
+     billing page is not a hard cap. Per-run and per-month counters where the tokens are already
+     counted; crossing either revokes sentinels and halts the run ([phases.md](phases.md) §5). The
+     provider console's own spend limit is set to the same number as the outer backstop.
+   - **The full phase 6 sweep does not fit in a month.** 45 runs at ~$2–3 is $90–135. Phase 6's
+     *acceptance* — two configurations × three runs × one benchmark item, ~6 runs, ~$12–18 — does.
+     Anything beyond that is shrunk or spread across months; the compare is answered on the minimum
+     and widened only if the spread demands it.
+   - **Phase 3's recorded mode is leaned on hard.** Every dev-loop iteration that can replay, does.
+   - **Turn caps stay as the backstop** for loops that burn turns without spending much.
 4. **Which empirical question do you want answered first?** The docs name two front-runners: can
    Haiku carry implementation (answerable at phase 6), and does the review loop converge on quality
    (answerable at phase 5). The order above answers the second first because planning comes before
@@ -691,10 +706,10 @@ recorded here, struck through with the decision, per the convention in CLAUDE.md
    or a model — is the self-report problem the design guards against at runtime, and an exit code
    is not. Phase 0 already follows this ([phases/phase-0.md](phases/phase-0.md) §5); every later
    phase plan does too.
-10. **Is one human the only user throughout?** The prototype assumes a single operator at a
-    terminal: escalations are prompts, the PM phase is an attach, and nothing carries attribution.
-    If a second person will use it before phase 8, escalation records need an identity field from
-    phase 1, which is cheap now and a migration later ([console.md](console.md) §5).
+10. ~~**Is one human the only user throughout?**~~ **Answered 2026-09-21: single user for now.**
+    No identity field in phase 1; escalation records carry no attribution. The cost accepted is the
+    migration described in [console.md](console.md) §5 when a second person arrives, which is the
+    console's problem to solve, not the prototype's.
 
 ---
 

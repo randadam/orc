@@ -45,6 +45,7 @@ orc run ship-feature # run it on AWS
 | [docs/observability.md](docs/observability.md) | OTEL metrics, and how to compare configurations |
 | [docs/console.md](docs/console.md) | The console and connectors: intake, interaction, observation |
 | [docs/decision-layer.md](docs/decision-layer.md) | Fast typed decisions (Jev) behind an LLM-backed interface |
+| [docs/fixture.md](docs/fixture.md) | The `tudu` seed: what the target repo must contain per phase |
 
 Status: **design phase.** Nothing is implemented yet.
 

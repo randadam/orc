@@ -3,7 +3,7 @@
 Read this first. It exists so a session with no prior context can pick up the design without
 re-deriving it or re-litigating settled questions.
 
-**Status: design complete, implementation not started.** Ten documents, no code.
+**Status: design complete, implementation not started.** Eleven documents, no code.
 
 ---
 
@@ -21,7 +21,8 @@ re-deriving it or re-litigating settled questions.
 5. The rest as needed: [proxy-design](docs/proxy-design.md) (the broker),
    [plugin-api](docs/plugin-api.md) (the SDK surface), [environments](docs/environments.md)
    (dev containers), [observability](docs/observability.md) (metrics),
-   [console](docs/console.md) (UI and connectors), [decision-layer](docs/decision-layer.md) (Jev).
+   [console](docs/console.md) (UI and connectors), [decision-layer](docs/decision-layer.md) (Jev),
+   [fixture](docs/fixture.md) (what the `tudu` seed must contain).
 
 ---
 
@@ -71,12 +72,14 @@ These decided several arguments each, and are the ones to reason from when somet
 
 ## The one thing blocking a start
 
-**Which repository the POC targets** — named, `randadam/aib`, readable, and **empty** as of
-2026-09-21 (phases.md §15 Q1). So the blocking question has moved one step: **how does `aib` get its
-initial content?** The workflow needs a repo with a lockfile, a test suite and a green baseline from
-phase 1's first real run. Seeding it by hand as a purpose-built TypeScript/pnpm fixture is the
-cheapest answer; having orc bootstrap it is a different workflow shape. The phase 1 plan waits on
-this.
+**Nothing, any more, waits on a decision.** The target is **`randadam/tudu`** — empty as of
+2026-09-21, to be **seeded by hand as a to-do app fixture** per [docs/fixture.md](docs/fixture.md).
+That seed is the first piece of *work* after phase 0, and phase 1's first real run needs it at the
+commit phase 1 pins. Of the ten §15 questions only Q2 (phase 6 or phase 8 as the stop) is open, and
+it sizes phases 7–8 rather than blocking them.
+
+**The real-model budget is $50/month, hard cap** (§15 Q3). Dollar enforcement lives in the broker
+from phase 2; the full phase 6 sweep does not fit a month and is answered on the minimum compare.
 
 Two architectural questions remain genuinely open but do not block: the model backend (plan.md §9)
 and target scale.
@@ -109,8 +112,9 @@ of how scope was cut, and phases.md is the record of the order.
 
 Roughly 30 across the docs, each listed at the end of its own document. They are not equivalent:
 
-- **Blocking:** the target repo (above). That is the whole list. phases.md §15 holds the ten
-  questions put to the author before detailed phase planning starts; the target repo is Q1.
+- **Blocking:** nothing awaits a decision. The first work item is seeding `tudu`
+  ([docs/fixture.md](docs/fixture.md)). phases.md §15 holds the ten questions put to the author;
+  nine are struck through, Q2 is pending and non-blocking.
 - **Empirical** — need a real run, not a decision. Slice granularity, conflict rate, whether Haiku
   can carry implementation, whether the PRD loop converges on quality or merely agreement.
   [docs/observability.md](docs/observability.md) is the instrument built to answer them, and names
