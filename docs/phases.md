@@ -107,11 +107,16 @@ any package is written. If (2) or (3) fails, the SDK surface changes but the des
 
 - Spikes are disposable and live outside `packages/`. Nothing in them is a foundation.
 
-**Left open — structured output.** Three candidate mechanisms, to be chosen by what works in the spike:
+~~**Left open — structured output.**~~ **Settled 2026-09-21 by spike 03-submit: the submit tool.**
+A registered `submit_result` tool carrying the schema was called **5/5** with valid arguments, and
+`terminate: true` skipped the follow-up call every time — so `ask()` costs one turn, not two. The
+other two mechanisms were never needed and are not carried forward. Detail in
+[phases/phase-1.md](phases/phase-1.md) §2.2, which settles how the schema reaches the extension.
+The options, for the record:
 
 | Option | How | For | Against |
 | --- | --- | --- | --- |
-| **Submit tool** (recommended) | Register a `submit_result` tool with the schema; the agent calls it to finish | Model-agnostic, ends the turn deterministically, validation at the boundary | One more tool in every role's allowlist |
+| **Submit tool** (chosen) | Register a `submit_result` tool with the schema; the agent calls it to finish | Model-agnostic, ends the turn deterministically, validation at the boundary | One more tool in every role's allowlist |
 | Parse the final message | Ask for JSON, parse the last assistant message | No tooling | Fragile; retries on parse failure burn turns |
 | Provider structured outputs | Use the API's native constrained output | Strongest guarantee | Ties `ask()` to a provider feature; the broker must pass it through |
 
@@ -149,6 +154,9 @@ second `orc run` that skips the steps already done.
 - Two example workflows: the loop-and-escape one, and one that fans out with `parallel()`.
 - Two roles with different tool policy, so per-role enforcement is real from the first run.
 - Turn caps per agent and per run. A runaway loop during development is a real cost event.
+- **CI on GitHub Actions from the first slice**, running `pnpm check` on every pull request. It
+  arrives with the scaffold because that is the first slice with a test to run, and it never holds
+  a model key.
 
 **Observability increment.** The OTEL SDK is wired now, because the runner is the emitter and it now
 exists. One trace per run; spans for run, phase, step, agent, turn, tool call and verify, derived
@@ -179,6 +187,11 @@ events and are labelled provisional; the broker replaces them in phase 2.
 - **Phase 1 runs against a throwaway clone** in a temp directory, never the developer's checkout.
   Agents hold `write` and `bash` on a real machine here; the target is disposable by construction.
 - **One model, Sonnet.** The Haiku split arrives with real implementation in phase 6.
+- **CI is GitHub Actions and lands in slice 1.0**, the slice that introduces vitest — the first one
+  that has anything to gate. It runs `pnpm check` with no key and no seed; `accept:phase1` is not
+  in CI, because a job that spends on every push is not compatible with a $50/month hard cap and a
+  key in repository secrets is reachable by any workflow a pull request can edit
+  ([phases/phase-1.md](phases/phase-1.md) §2.12).
 
 ~~**Left open — where telemetry lands.**~~ **Settled 2026-09-21 in
 [phases/phase-1.md](phases/phase-1.md) §2.1: an in-process exporter writes `trace.jsonl` into the
@@ -627,6 +640,7 @@ with a number, per the convention there.
 | --- | --- | --- |
 | Spikes are disposable, outside `packages/` | 0 | Foundations built during a spike are foundations built on an unproved assumption |
 | pnpm monorepo, Node 22, vitest | 1 | The docs already assume TypeScript, pnpm and Node 22 |
+| CI on GitHub Actions from slice 1.0; `pnpm check` only, no key in CI | 1 | CLAUDE.md puts every change behind a PR, and a gate that runs only on the author's machine is a self-report |
 | Runner is a library behind a `Sandbox` seam; `LocalProcessSandbox` then `LocalDockerSandbox` | 1, 2 | poc.md §4 names the seam; this just says the first implementation is a bare process |
 | The run directory is the readable surface; layout fixed and versioned in phase 1 | 1 | Resume, `orc compare` and the console all read it; console.md §7 |
 | `orc.config.hash` stamped on every record from the first run | 1 | The join key for every comparison; costs nothing now |
@@ -646,7 +660,7 @@ Each is settled in the named phase's detailed plan, not here.
 
 | Decision | Phase | Options (recommended first) | What decides it |
 | --- | --- | --- | --- |
-| Structured-output mechanism for `ask()` | 0 | Submit tool · parse final message · provider structured outputs | The phase 0 spike |
+| ~~Structured-output mechanism for `ask()`~~ | 0 | **Settled 2026-09-21: the submit tool** — 5/5 valid calls, `terminate: true` ends the turn (§3; `spikes/FINDINGS.md`) | The phase 0 spike |
 | ~~Where telemetry lands~~ | 1 | **Settled: in-process JSONL in the run dir; OTLP as a flag** ([phases/phase-1.md](phases/phase-1.md) §2.1) | Q6: no Docker, so no collector on the dev loop |
 | Control channel to an in-container runner | 2 | Attached stdio · runner connects out · runner listens | The reattach spike |
 | ~~Target repository (§15, Q1)~~ | — | **Settled 2026-09-21: `randadam/tudu`, seeded at `bf25ac6` as an ordinary React SPA carrying no plans** ([fixture.md](fixture.md), [plan.md](plan.md) §8 D9) | The author |

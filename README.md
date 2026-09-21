@@ -47,8 +47,9 @@ orc run ship-feature # run it on AWS
 | [docs/decision-layer.md](docs/decision-layer.md) | Fast typed decisions (Jev) behind an LLM-backed interface |
 | [docs/fixture.md](docs/fixture.md) | The `tudu` seed: what the target repo must contain per phase |
 
-Status: **design phase.** Nothing is implemented yet.
+Status: **design complete; phase 0 spikes run and closed out; phase 1 is next.** Nothing is
+implemented yet — `spikes/` is throwaway by design and imported by nothing.
 
 **New here (or starting a fresh session)? Read [CLAUDE.md](CLAUDE.md) first** — reading order, the
-eight decisions and what they rest on, what was rejected and why, and the single open question that
-blocks starting.
+nine decisions and what they rest on, what was rejected and why, and the triage of what is still
+open (nothing of which blocks starting).

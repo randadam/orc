@@ -192,6 +192,53 @@ are superseded by the scoped names phases.md already uses. Agent ids are `<role>
 per run. Run ids are `<UTC basic timestamp>-<4 base36>`, e.g. `20260922T140311Z-k3f9`, so a
 directory listing sorts by time.
 
+### 2.12 CI is GitHub Actions, and it arrives with the first test
+
+**`.github/workflows/ci.yml` runs `pnpm check` on every pull request and on pushes to `main`, and
+it ships in slice 1.0 — the same slice that introduces vitest.** [CLAUDE.md](../../CLAUDE.md) puts
+every change behind a branch and a pull request, and a gate that only ever runs on the author's
+machine is not a gate: it is a self-report, which is the thing this design refuses everywhere else.
+An exit code from a runner nobody controls is the same evidence standard the runner applies to
+agents.
+
+**It arrives with slice 1.0 rather than later** because 1.0 is the first slice that has anything to
+run. CI over an empty workspace gates nothing; CI introduced at 1.1 or later leaves a window in
+which tests exist and no proposal is checked against them. The first slice that produces a test is
+the first slice that can have CI, so it has it.
+
+**What runs.** `pnpm install --frozen-lockfile`, then `pnpm check` — build, lint, test. That is the
+whole job. §9 already requires every slice's tests to run with **no key and no seed**, with live
+checks behind `ORC_LIVE=1`; CI is simply the machine where that constraint is enforced rather than
+remembered. `ORC_LIVE` is never set, so the live tests skip.
+
+**No model key ever reaches CI, and `accept:phase1` does not run there.** Two reasons, and either
+alone is sufficient. The budget: `accept:phase1` runs Sonnet against `tudu`, and a job that spends
+on every push turns the $50/month hard cap ([phases.md](../phases.md) §15 Q3) into something
+enforced by hoping nobody opens many pull requests. The blast radius: a key in repository secrets is
+reachable by any workflow a pull request can modify, which is the containment argument
+([CLAUDE.md](../../CLAUDE.md), "containment, not prevention") applied to the one credential the
+whole design exists to keep out of reach. Exit criterion 3 stays what it is — a person runs
+`pnpm accept:phase1` locally with a key in their own environment. Phase 2 can revisit this once the
+broker owns the key and can cap a run in dollars; until then CI is the free half of the suite.
+
+**Mechanics**, so the pnpm guarantees survive the runner. `actions/checkout`, then `pnpm` from the
+`packageManager` field via corepack (or `pnpm/action-setup` pinned to the same version), then
+`actions/setup-node` on the Node 22 of §1.4 with pnpm's store cached. `--frozen-lockfile` so CI
+fails on a lockfile that does not match `package.json` instead of quietly resolving something else.
+This mirrors what `tudu` already does at `bf25ac6` ([fixture.md](../fixture.md) §5 item 1), which
+is deliberate: the fixture and the tool install the same way, so an install problem is never
+ambiguous about which repository caused it.
+
+Three settings that are small and are the ones that bite later: `permissions: contents: read` at the
+workflow level, so the default token cannot write; `concurrency` keyed on the ref with
+`cancel-in-progress`, so a fast second push does not queue behind a stale run; and pinned action
+versions, because an action is a dependency that executes in the repository's context.
+
+**`spikes/` stays out of CI.** It is outside the workspace, imported by nothing, and frozen at
+phase 0. `run-all.sh` needs a key and spends on five of its six scripts. Re-running it is a
+deliberate act tied to re-pinning Pi ([phase-0.md](phase-0.md) §6 item 1), not a per-pull-request
+gate.
+
 ---
 
 ## 3. Layout
@@ -200,6 +247,7 @@ directory listing sorts by time.
 package.json                 pnpm workspace; scripts: check, test, accept:phase1
 pnpm-workspace.yaml
 tsconfig.base.json
+.github/workflows/ci.yml     pnpm check on every PR and on main; no key, no seed (§2.12)
 packages/
   sdk/                       @orc/sdk
     src/config.ts            defineConfig, role, freeze, canonical JSON, hash
@@ -670,11 +718,13 @@ per-role policy, and `parallel`'s cap in one run.
 Cut per CLAUDE.md's rule: each merges on its own, is verified by something that exits 0 or 1, and
 fits one session. Build in numeric order except where the dependency column allows otherwise.
 Every slice adds its tests to `pnpm test`, which runs with **no key and no seed**; live checks are
-gated by `ORC_LIVE=1` and skipped otherwise.
+gated by `ORC_LIVE=1` and skipped otherwise. From 1.0 on, that is also exactly what CI runs on
+every pull request (§2.12), so a slice whose tests need a key or the seed fails the gate rather
+than passing quietly on the author's machine.
 
 | # | Slice | Delivers | Verified by | Depends on |
 | --- | --- | --- | --- | --- |
-| 1.0 | Scaffold | pnpm workspace, four package skeletons, `tsconfig.base.json`, vitest, eslint + prettier, `pnpm check` = build + lint + test | `pnpm check` exits 0 with one placeholder test per package | — |
+| 1.0 | Scaffold and CI | pnpm workspace, four package skeletons, `tsconfig.base.json`, vitest, eslint + prettier, `pnpm check` = build + lint + test, and `.github/workflows/ci.yml` running it on every pull request (§2.12) | `pnpm check` exits 0 with one placeholder test per package, **and the slice's own pull request shows that same check green on the runner** — the first slice is also the first proof the gate works | — |
 | 1.1 | RPC bridge | `PiProcess` (§6.1); `test/fake-pi.ts` | Unit tests against fake-pi: framing (CRLF stripped, U+2028 inside a string survives), `prompt`→`agent_end`, `abort` mid-turn, timeout rejects, events/commands logged in order. `ORC_LIVE` smoke: one Haiku turn | 1.0 |
 | 1.2 | Config and hash | `defineConfig`, `role`, deep freeze, unknown-key rejection, canonical JSON, `hash` | Mutation throws; hash identical under key reordering; a golden hash for a fixture config; `egress:` in a role throws | 1.0 |
 | 1.3 | Run directory | `rundir.ts`: create, open, every record in §4; `orc runs`, `orc show` | A scripted writer produces a run dir whose `find . -type f \| sort` equals a checked-in listing (byte-level layout); each record round-trips through its reader; id encoding test | 1.2 |
@@ -717,13 +767,16 @@ criterion in phases.md §4:
 ## 11. Exit criteria
 
 1. `pnpm check` exits 0: every package builds, lints, and its no-key tests pass.
-2. `pnpm accept:phase1` exits 0 against `tudu` at the pinned sha with a real key.
-3. A person has run `orc run examples/loop-and-escape`, then `orc show` and `orc trace` on it, and
+2. **CI runs that check on a runner, and every slice from 1.0 on merged with it green.** Not
+   "CI exists": a red workflow that gets merged around leaves criterion 1 exactly as self-reported
+   as it was before CI existed (§2.12).
+3. `pnpm accept:phase1` exits 0 against `tudu` at the pinned sha with a real key.
+4. A person has run `orc run examples/loop-and-escape`, then `orc show` and `orc trace` on it, and
    ticked the readability checklist.
-4. `docs/phases.md` §4's "left open" block records §2.1, and
+5. `docs/phases.md` §4's "left open" block records §2.1, and
    [observability.md](../observability.md) §6 says where telemetry lands.
-5. Every ▲ in §5 is either resolved in [plugin-api.md](../plugin-api.md) or listed in §13.
-6. Spend for the phase, from the provisional usage in every run's `agent.json`, is under $15.
+6. Every ▲ in §5 is either resolved in [plugin-api.md](../plugin-api.md) or listed in §13.
+7. Spend for the phase, from the provisional usage in every run's `agent.json`, is under $15.
 
 ---
 
@@ -735,7 +788,7 @@ sandbox, the extension and the agent file meet for the first time.
 
 **Model spend is bounded by construction**: `pnpm test` spends nothing; live tests run Haiku turns
 that cost cents; a loop-and-escape run on Sonnet against `tudu` is on the order of a dollar. Ten
-such runs plus development is the $15 in exit criterion 6, well inside the $50 month
+such runs plus development is the $15 in exit criterion 7, well inside the $50 month
 ([phases.md](../phases.md) §15 Q3). If a run ever costs more than a few dollars, the turn caps
 are wrong before anything else is.
 
@@ -743,8 +796,11 @@ are wrong before anything else is.
 
 ## 13. Open items
 
-1. **§1.2 is assumed.** Replace it with `FINDINGS.md`'s lines before slice 1.1; re-cut what they
-   contradict.
+1. ~~**§1.2 is assumed.**~~ **Closed 2026-09-21: phase 0 ran and §1.2 quotes `spikes/FINDINGS.md`.**
+   Three findings re-cut this plan rather than confirming it — `ask()` costs one turn because
+   `terminate: true` holds (§2.2), the control loop must tolerate concurrent sibling tool calls and
+   a silent `abort` on a settled session (§6.1), and `@orc/pi` must assert the trust marker loaded
+   (§6.3). Nothing in §1.2 is an assumption any more.
 2. **`session.ask()` depends on re-registering `submit_result` with a new schema replacing the
    old.** Checked first in slice 1.8; removed from the surface if it does not hold.
 3. **What event a blocked tool call produces.** §6.3 assumes `tool_execution_end` with the reason
@@ -763,3 +819,8 @@ are wrong before anything else is.
 8. **The suggested task in §8.1 may already be true at the seed commit.** Check before pinning.
 9. **`resolveModels()` is a constant the CLI checks against**, not yet wired to Pi's model list.
    Wiring it as the argument to Pi's model refresh is the phase 6 change that opens the seam.
+10. **CI covers one Node, one OS, and none of the live half** (§2.12). Ubuntu on the pinned Node 22,
+    no key, no seed — which is everything phase 1's gate needs and nothing more. A matrix is
+    pointless while the only supported environment is the author's; a Docker-capable runner becomes
+    a real question in phase 2, when `LocalDockerSandbox` arrives and the fast tests stop being
+    free of containers. Revisit there, not here.
