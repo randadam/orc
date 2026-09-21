@@ -53,13 +53,15 @@ orc run ship-feature # run it on AWS
 pnpm install          # pnpm only, never npm or npx — see CLAUDE.md
 pnpm check            # build, typecheck, lint, test: what CI runs on every pull request
 pnpm test             # vitest; no model key and no seed repo required
+ORC_LIVE=1 pnpm test  # also the live checks: needs ANTHROPIC_API_KEY, spends cents
 ```
 
 The workspace is `packages/sdk`, `packages/runner`, `packages/pi` and `packages/cli`.
 `spikes/` sits outside it, frozen at phase 0 and imported by nothing.
 
 Status: **design complete; phase 0 spikes run and closed out; phase 1 is under way.** Slice 1.0 —
-the workspace scaffold and the CI gate — has landed; the packages are skeletons.
+the workspace scaffold and the CI gate — and slice 1.1 — `PiProcess`, the RPC bridge to Pi, with
+its scripted test double — have landed. `@orc/sdk`, `@orc/pi` and `@orc/cli` are still skeletons.
 
 **New here (or starting a fresh session)? Read [CLAUDE.md](CLAUDE.md) first** — reading order, the
 nine decisions and what they rest on, what was rejected and why, and the triage of what is still

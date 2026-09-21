@@ -3,7 +3,7 @@
 Read this first. It exists so a session with no prior context can pick up the design without
 re-deriving it or re-litigating settled questions.
 
-**Status: phase 0 complete; phase 1 is next.** Twelve documents, plus `spikes/` — all six spikes
+**Status: phase 0 complete; phase 1 is under way.** Twelve documents, plus `spikes/` — all six spikes
 ran green on 2026-09-21 and every [docs/phases/phase-0.md](docs/phases/phase-0.md) §5 exit criterion
 is met. **The kill criterion is answered: `tool_call` can veto, so the tool-policy model stands.**
 Structured output is 5/5 on a terminating tool, abort and resume work, and `--session` is honoured
@@ -13,9 +13,10 @@ and its "What phase 1 should carry forward" section is the part to read before b
 
 **`randadam/tudu` is seeded** at `bf25ac6`: an ordinary React SPA, **carrying no plans by design**
 (D9) — what it should become is produced through orc, not written by hand. Phase 1 pins that commit
-and binds to `pnpm test`: 46 tests, ~4s, no services. **The next work item is phase 1 slice 1.0**,
-the pnpm workspace scaffold, which needs no seed — and which also carries CI, because it is the
-first slice with a test to gate ([docs/phases/phase-1.md](docs/phases/phase-1.md) §2.12).
+and binds to `pnpm test`: 46 tests, ~4s, no services. **Slices 1.0 and 1.1 have landed** — the
+pnpm workspace with the CI gate ([docs/phases/phase-1.md](docs/phases/phase-1.md) §2.12), and
+`PiProcess`, the RPC bridge, with the `fake-pi` test double every later slice's unit tests drive.
+**The next work item is slice 1.2**, config and hash, which depends only on 1.0.
 
 ---
 

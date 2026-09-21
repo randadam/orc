@@ -17,5 +17,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.86.1"
   }
 }
